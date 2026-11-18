@@ -1,0 +1,8 @@
+{
+  "name": "InnoWear Business Management System",
+  "description": "Central business management platform for InnoWear Fashion Collection uniting POS, Inventory, Online Store, CRM, Accounting, Orders, Delivery, Staff, Reports, Suppliers, Loyalty, Marketing, and Admin.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
