@@ -18,10 +18,12 @@ import {
   PurchaseOrder,
   PromoCampaign,
   AdminUser,
+  AdminSecurity,
   StoreSettings,
   LoyaltyTier,
 } from '../types';
 import { INITIAL_STATE } from '../data/seedData';
+import { DEFAULT_ADMIN_PASSWORD, hashPassword } from '../utils/auth';
 
 const STORAGE_KEY = 'innowear_bms_state_v1';
 
@@ -63,6 +65,9 @@ export interface CompleteSalePayload {
   promoCode?: string;
   pointsRedeemed?: number;
   staffName?: string;
+  cashTendered?: number;
+  changeDue?: number;
+  receiptNotes?: string;
 }
 
 interface InnoWearContextValue {
@@ -75,25 +80,55 @@ interface InnoWearContextValue {
   setTheme: (theme: ThemePalette) => void;
   completeSale: (payload: CompleteSalePayload) => Order;
   addProduct: (product: Omit<Product, 'id'>) => void;
+  updateProductImage: (productId: string, image: string) => void;
+  deleteProduct: (productId: string) => void;
   adjustStock: (productId: string, size: string, delta: number) => void;
   addCustomer: (customer: Omit<Customer, 'id' | 'totalSpent' | 'ordersCount' | 'points' | 'tier' | 'joinedDate'>) => Customer;
+  deleteCustomer: (customerId: string) => void;
   advanceOrderStatus: (orderId: string, nextStatus: OrderStatus) => void;
+  deleteOrder: (orderId: string) => void;
   advanceDeliveryStatus: (deliveryId: string, nextStatus: DeliveryStatus) => void;
   addDelivery: (delivery: Omit<Delivery, 'id' | 'trackingCode' | 'dispatchedAt'>) => void;
+  deleteDelivery: (deliveryId: string) => void;
   addTransaction: (txn: Omit<Transaction, 'id'>) => void;
   settleTransaction: (txnId: string) => void;
+  deleteTransaction: (txnId: string) => void;
   updateStaffAttendance: (staffId: string, status: AttendanceStatus) => void;
   addStaffMember: (member: Omit<StaffMember, 'id' | 'salesAchieved'>) => void;
+  deleteStaffMember: (staffId: string) => void;
   addSupplier: (supplier: Omit<Supplier, 'id' | 'balanceOwed'>) => void;
+  deleteSupplier: (supplierId: string) => void;
   createPurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'poNumber' | 'status' | 'createdDate' | 'totalCost'>) => void;
   receivePurchaseOrder: (poId: string) => void;
+  deletePurchaseOrder: (poId: string) => void;
   redeemLoyaltyReward: (customerId: string, rewardId: string) => boolean;
   awardBonusPoints: (customerId: string, points: number, reason: string) => void;
+  deleteLoyaltyReward: (rewardId: string) => void;
   addCampaign: (campaign: Omit<PromoCampaign, 'id' | 'spend' | 'reach' | 'conversions'>) => void;
   toggleCampaignStatus: (campaignId: string) => void;
+  deleteCampaign: (campaignId: string) => void;
   addAdminUser: (user: Omit<AdminUser, 'id' | 'lastActive'>) => void;
   toggleAdminUserActive: (userId: string) => void;
+  deleteAdminUser: (userId: string) => void;
   updateSettings: (partial: Partial<StoreSettings>) => void;
+  updateOwnerProfile: (partial: {
+    ownerName?: string;
+    ownerTitle?: string;
+    ownerPhoto?: string;
+  }) => void;
+  isAdminUnlocked: boolean;
+  isWorkspaceLocked: boolean;
+  unlockAdmin: (password: string) => Promise<boolean>;
+  lockAdmin: () => void;
+  unlockWorkspace: (password: string) => Promise<boolean>;
+  lockWorkspace: () => void;
+  changeAdminPassword: (
+    currentPassword: string,
+    newPassword: string
+  ) => Promise<{ ok: boolean; error?: string }>;
+  updateAdminSecurity: (
+    partial: Partial<Pick<AdminSecurity, 'protectAdminPanel' | 'requireLoginOnStart'>>
+  ) => void;
   resetDemoData: () => void;
 }
 
@@ -104,9 +139,32 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as AppState;
+        const parsed = JSON.parse(raw) as Partial<AppState>;
         if (parsed && Array.isArray(parsed.products) && parsed.settings) {
-          return parsed;
+          const hydratedCurrency =
+            !parsed.settings.currencySymbol || parsed.settings.currencySymbol === '$'
+              ? 'K'
+              : parsed.settings.currencySymbol;
+          const hydratedRewards = Array.isArray(parsed.loyaltyRewards)
+            ? parsed.loyaltyRewards.map((r) => ({
+                ...r,
+                title: r.title.replace(/\$(\d)/g, 'K$1'),
+              }))
+            : INITIAL_STATE.loyaltyRewards;
+          return {
+            ...INITIAL_STATE,
+            ...parsed,
+            loyaltyRewards: hydratedRewards,
+            settings: {
+              ...INITIAL_STATE.settings,
+              ...(parsed.settings || {}),
+              currencySymbol: hydratedCurrency,
+            },
+            adminSecurity: {
+              ...INITIAL_STATE.adminSecurity,
+              ...(parsed.adminSecurity || {}),
+            },
+          } as AppState;
         }
       }
     } catch {
@@ -120,8 +178,37 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   );
   const [simulatedOffline, setSimulatedOffline] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(
+    () => !state.adminSecurity.protectAdminPanel
+  );
+  const [isWorkspaceLocked, setIsWorkspaceLocked] = useState<boolean>(
+    () => state.adminSecurity.requireLoginOnStart
+  );
 
   const isOffline = browserOffline || simulatedOffline;
+
+  // Initialize hashed default password once if empty
+  useEffect(() => {
+    if (state.adminSecurity.passwordHash) return;
+    let active = true;
+    hashPassword(DEFAULT_ADMIN_PASSWORD).then((digest) => {
+      if (!active) return;
+      setState((prev) =>
+        prev.adminSecurity.passwordHash
+          ? prev
+          : {
+              ...prev,
+              adminSecurity: {
+                ...prev.adminSecurity,
+                passwordHash: digest,
+              },
+            }
+      );
+    });
+    return () => {
+      active = false;
+    };
+  }, [state.adminSecurity.passwordHash]);
 
   const notify = useCallback((msg: string) => {
     setToast(msg);
@@ -195,6 +282,8 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const orderId = `ord-${Date.now()}`;
       const timestamp = nowTimestamp();
 
+      const earnedPoints = Math.round(total * state.settings.pointsPerDollar);
+
       const newOrder: Order = {
         id: orderId,
         orderNumber,
@@ -214,6 +303,11 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         total,
         staffName: payload.staffName,
         deliveryAddress: payload.deliveryAddress,
+        cashTendered: payload.cashTendered,
+        changeDue: payload.changeDue,
+        pointsEarned: earnedPoints,
+        pointsRedeemed: payload.pointsRedeemed || 0,
+        receiptNotes: payload.receiptNotes?.trim() || undefined,
       };
 
       setState((prev) => {
@@ -353,6 +447,30 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
+  const updateProductImage = useCallback(
+    (productId: string, image: string) => {
+      setState((prev) => ({
+        ...prev,
+        products: prev.products.map((p) => (p.id === productId ? { ...p, image } : p)),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Product picture updated across Inventory, POS, and Online Store.');
+    },
+    [notify]
+  );
+
+  const deleteProduct = useCallback(
+    (productId: string) => {
+      setState((prev) => ({
+        ...prev,
+        products: prev.products.filter((p) => p.id !== productId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Product removed from Inventory and Online Store.');
+    },
+    [notify]
+  );
+
   const adjustStock = useCallback(
     (productId: string, size: string, delta: number) => {
       setState((prev) => ({
@@ -391,6 +509,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }));
       notify(`Added ${customer.name} to CRM with 50 welcome points.`);
       return created;
+    },
+    [notify]
+  );
+
+  const deleteCustomer = useCallback(
+    (customerId: string) => {
+      setState((prev) => ({
+        ...prev,
+        customers: prev.customers.filter((c) => c.id !== customerId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Customer profile deleted from CRM.');
     },
     [notify]
   );
@@ -435,6 +565,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         return { ...prev, orders, deliveries, transactions, lastSyncedAt: nowTimestamp() };
       });
       notify(`Order updated to ${nextStatus}.`);
+    },
+    [notify]
+  );
+
+  const deleteOrder = useCallback(
+    (orderId: string) => {
+      setState((prev) => ({
+        ...prev,
+        orders: prev.orders.filter((o) => o.id !== orderId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Order deleted from order records.');
     },
     [notify]
   );
@@ -484,6 +626,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
+  const deleteDelivery = useCallback(
+    (deliveryId: string) => {
+      setState((prev) => ({
+        ...prev,
+        deliveries: prev.deliveries.filter((d) => d.id !== deliveryId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Delivery dispatch record deleted.');
+    },
+    [notify]
+  );
+
   const addTransaction = useCallback(
     (txn: Omit<Transaction, 'id'>) => {
       const created: Transaction = { ...txn, id: `txn-${Date.now()}` };
@@ -522,6 +676,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
+  const deleteTransaction = useCallback(
+    (txnId: string) => {
+      setState((prev) => ({
+        ...prev,
+        transactions: prev.transactions.filter((t) => t.id !== txnId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Financial entry deleted from ledger.');
+    },
+    [notify]
+  );
+
   const updateStaffAttendance = useCallback(
     (staffId: string, attendance: AttendanceStatus) => {
       const timeNow = nowTimestamp().slice(11, 16);
@@ -556,6 +722,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
+  const deleteStaffMember = useCallback(
+    (staffId: string) => {
+      setState((prev) => ({
+        ...prev,
+        staff: prev.staff.filter((s) => s.id !== staffId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Staff member removed from directory.');
+    },
+    [notify]
+  );
+
   const addSupplier = useCallback(
     (supplier: Omit<Supplier, 'id' | 'balanceOwed'>) => {
       const created: Supplier = { ...supplier, id: `sup-${Date.now()}`, balanceOwed: 0 };
@@ -565,6 +743,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: nowTimestamp(),
       }));
       notify(`Added supplier ${supplier.name}.`);
+    },
+    [notify]
+  );
+
+  const deleteSupplier = useCallback(
+    (supplierId: string) => {
+      setState((prev) => ({
+        ...prev,
+        suppliers: prev.suppliers.filter((s) => s.id !== supplierId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Supplier removed from directory.');
     },
     [notify]
   );
@@ -633,6 +823,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [state.purchaseOrders, notify]
   );
 
+  const deletePurchaseOrder = useCallback(
+    (poId: string) => {
+      setState((prev) => ({
+        ...prev,
+        purchaseOrders: prev.purchaseOrders.filter((p) => p.id !== poId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Purchase order deleted.');
+    },
+    [notify]
+  );
+
   const redeemLoyaltyReward = useCallback(
     (customerId: string, rewardId: string): boolean => {
       const cust = state.customers.find((c) => c.id === customerId);
@@ -667,6 +869,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: nowTimestamp(),
       }));
       notify(`Awarded +${points} loyalty points (${reason}).`);
+    },
+    [notify]
+  );
+
+  const deleteLoyaltyReward = useCallback(
+    (rewardId: string) => {
+      setState((prev) => ({
+        ...prev,
+        loyaltyRewards: prev.loyaltyRewards.filter((r) => r.id !== rewardId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Loyalty reward voucher deleted.');
     },
     [notify]
   );
@@ -707,6 +921,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
+  const deleteCampaign = useCallback(
+    (campaignId: string) => {
+      setState((prev) => ({
+        ...prev,
+        campaigns: prev.campaigns.filter((c) => c.id !== campaignId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Marketing campaign deleted.');
+    },
+    [notify]
+  );
+
   const addAdminUser = useCallback(
     (user: Omit<AdminUser, 'id' | 'lastActive'>) => {
       const created: AdminUser = {
@@ -734,6 +960,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   }, []);
 
+  const deleteAdminUser = useCallback(
+    (userId: string) => {
+      setState((prev) => ({
+        ...prev,
+        adminUsers: prev.adminUsers.filter((u) => u.id !== userId || u.role === 'Owner'),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('User removed from Admin Access.');
+    },
+    [notify]
+  );
+
   const updateSettings = useCallback(
     (partial: Partial<StoreSettings>) => {
       setState((prev) => ({
@@ -746,9 +984,145 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
+  const updateOwnerProfile = useCallback(
+    (partial: { ownerName?: string; ownerTitle?: string; ownerPhoto?: string }) => {
+      setState((prev) => {
+        const nextOwnerName =
+          partial.ownerName !== undefined
+            ? partial.ownerName.trim() || prev.settings.ownerName
+            : prev.settings.ownerName;
+        const nextOwnerTitle =
+          partial.ownerTitle !== undefined
+            ? partial.ownerTitle.trim() || prev.settings.ownerTitle
+            : prev.settings.ownerTitle;
+        const nextOwnerPhoto =
+          partial.ownerPhoto !== undefined ? partial.ownerPhoto : prev.settings.ownerPhoto;
+
+        const adminUsers = prev.adminUsers.map((u) =>
+          u.role === 'Owner' ? { ...u, name: nextOwnerName } : u
+        );
+
+        return {
+          ...prev,
+          adminUsers,
+          settings: {
+            ...prev.settings,
+            ownerName: nextOwnerName,
+            ownerTitle: nextOwnerTitle,
+            ownerPhoto: nextOwnerPhoto,
+          },
+          lastSyncedAt: nowTimestamp(),
+        };
+      });
+      notify(
+        partial.ownerPhoto !== undefined
+          ? partial.ownerPhoto
+            ? 'Owner picture uploaded and saved.'
+            : 'Owner picture removed.'
+          : 'Owner profile updated.'
+      );
+    },
+    [notify]
+  );
+
+  const verifyPassword = useCallback(
+    async (candidate: string): Promise<boolean> => {
+      const candidateHash = await hashPassword(candidate);
+      const expectedHash =
+        state.adminSecurity.passwordHash || (await hashPassword(DEFAULT_ADMIN_PASSWORD));
+      return candidateHash === expectedHash;
+    },
+    [state.adminSecurity.passwordHash]
+  );
+
+  const unlockAdmin = useCallback(
+    async (password: string): Promise<boolean> => {
+      const ok = await verifyPassword(password);
+      if (ok) {
+        setIsAdminUnlocked(true);
+        notify('Admin Control unlocked for this session.');
+      }
+      return ok;
+    },
+    [verifyPassword, notify]
+  );
+
+  const lockAdmin = useCallback(() => {
+    setIsAdminUnlocked(false);
+    notify('Admin Control locked.');
+  }, [notify]);
+
+  const unlockWorkspace = useCallback(
+    async (password: string): Promise<boolean> => {
+      const ok = await verifyPassword(password);
+      if (ok) {
+        setIsWorkspaceLocked(false);
+        setIsAdminUnlocked(true);
+        notify('InnoWear workspace unlocked.');
+      }
+      return ok;
+    },
+    [verifyPassword, notify]
+  );
+
+  const lockWorkspace = useCallback(() => {
+    setIsAdminUnlocked(false);
+    setIsWorkspaceLocked(true);
+  }, []);
+
+  const changeAdminPassword = useCallback(
+    async (
+      currentPassword: string,
+      newPassword: string
+    ): Promise<{ ok: boolean; error?: string }> => {
+      const matches = await verifyPassword(currentPassword);
+      if (!matches) {
+        return { ok: false, error: 'Current admin password is incorrect.' };
+      }
+      if (newPassword.trim().length < 4) {
+        return { ok: false, error: 'New password must be at least 4 characters.' };
+      }
+      const nextHash = await hashPassword(newPassword);
+      const timestamp = nowTimestamp();
+      setState((prev) => ({
+        ...prev,
+        adminSecurity: {
+          ...prev.adminSecurity,
+          passwordHash: nextHash,
+          isDefaultPassword: false,
+          passwordUpdatedAt: timestamp,
+        },
+        lastSyncedAt: timestamp,
+      }));
+      notify('Admin password updated and encrypted locally.');
+      return { ok: true };
+    },
+    [verifyPassword, notify]
+  );
+
+  const updateAdminSecurity = useCallback(
+    (partial: Partial<Pick<AdminSecurity, 'protectAdminPanel' | 'requireLoginOnStart'>>) => {
+      setState((prev) => ({
+        ...prev,
+        adminSecurity: {
+          ...prev.adminSecurity,
+          ...partial,
+        },
+        lastSyncedAt: nowTimestamp(),
+      }));
+      if (partial.protectAdminPanel === false) {
+        setIsAdminUnlocked(true);
+      }
+      notify('Security preferences updated.');
+    },
+    [notify]
+  );
+
   const resetDemoData = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setState(INITIAL_STATE);
+    setIsAdminUnlocked(false);
+    setIsWorkspaceLocked(false);
     notify('Workspace restored to initial InnoWear Fashion Collection dataset.');
   }, [notify]);
 
@@ -764,25 +1138,46 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setTheme,
         completeSale,
         addProduct,
+        updateProductImage,
+        deleteProduct,
         adjustStock,
         addCustomer,
+        deleteCustomer,
         advanceOrderStatus,
+        deleteOrder,
         advanceDeliveryStatus,
         addDelivery,
+        deleteDelivery,
         addTransaction,
         settleTransaction,
+        deleteTransaction,
         updateStaffAttendance,
         addStaffMember,
+        deleteStaffMember,
         addSupplier,
+        deleteSupplier,
         createPurchaseOrder,
         receivePurchaseOrder,
+        deletePurchaseOrder,
         redeemLoyaltyReward,
         awardBonusPoints,
+        deleteLoyaltyReward,
         addCampaign,
         toggleCampaignStatus,
+        deleteCampaign,
         addAdminUser,
         toggleAdminUserActive,
+        deleteAdminUser,
         updateSettings,
+        updateOwnerProfile,
+        isAdminUnlocked,
+        isWorkspaceLocked,
+        unlockAdmin,
+        lockAdmin,
+        unlockWorkspace,
+        lockWorkspace,
+        changeAdminPassword,
+        updateAdminSecurity,
         resetDemoData,
       }}
     >

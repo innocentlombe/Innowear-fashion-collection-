@@ -2,9 +2,17 @@ import React, { useState } from 'react';
 import { Plus, PackageCheck } from 'lucide-react';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 
 export const SuppliersView: React.FC = () => {
-  const { state, addSupplier, createPurchaseOrder, receivePurchaseOrder } = useInnoWear();
+  const {
+    state,
+    addSupplier,
+    deleteSupplier,
+    createPurchaseOrder,
+    receivePurchaseOrder,
+    deletePurchaseOrder,
+  } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -98,8 +106,18 @@ export const SuppliersView: React.FC = () => {
             key={sup.id}
             className="p-5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] space-y-2"
           >
-            <h2 className="text-base font-semibold text-[var(--text-primary)]">{sup.name}</h2>
-            <p className="text-xs text-[var(--accent)]">{sup.category}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-[var(--text-primary)] truncate">
+                  {sup.name}
+                </h2>
+                <p className="text-xs text-[var(--accent)]">{sup.category}</p>
+              </div>
+              <DeleteButton
+                onConfirm={() => deleteSupplier(sup.id)}
+                ariaLabel={`Delete supplier ${sup.name}`}
+              />
+            </div>
             <div className="text-xs text-[var(--text-secondary)] space-y-1 pt-2 border-t border-[var(--border-hairline)]">
               <p>Contact: {sup.contactPerson}</p>
               <p>{sup.phone}</p>
@@ -158,18 +176,24 @@ export const SuppliersView: React.FC = () => {
                     {po.totalCost.toLocaleString()}
                   </td>
                   <td className="py-3.5 px-4 text-right text-xs">
-                    {po.status !== 'Received' ? (
-                      <button
-                        type="button"
-                        onClick={() => receivePurchaseOrder(po.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[var(--accent)] text-[var(--accent-fg)] font-semibold hover:bg-[var(--accent-hover)] whitespace-nowrap"
-                      >
-                        <PackageCheck className="w-3.5 h-3.5" />
-                        Receive Stock
-                      </button>
-                    ) : (
-                      <span className="text-emerald-400 font-medium">Received</span>
-                    )}
+                    <div className="inline-flex items-center justify-end gap-2">
+                      {po.status !== 'Received' ? (
+                        <button
+                          type="button"
+                          onClick={() => receivePurchaseOrder(po.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[var(--accent)] text-[var(--accent-fg)] font-semibold hover:bg-[var(--accent-hover)] whitespace-nowrap"
+                        >
+                          <PackageCheck className="w-3.5 h-3.5" />
+                          Receive Stock
+                        </button>
+                      ) : (
+                        <span className="text-emerald-400 font-medium">Received</span>
+                      )}
+                      <DeleteButton
+                        onConfirm={() => deletePurchaseOrder(po.id)}
+                        ariaLabel={`Delete purchase order ${po.poNumber}`}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

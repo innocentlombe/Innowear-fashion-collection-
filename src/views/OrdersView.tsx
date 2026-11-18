@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Eye } from 'lucide-react';
+import { ArrowRight, Receipt } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { useInnoWear } from '../store/useInnoWearStore';
-import { Modal } from '../components/Modal';
+import { AdvancedReceiptModal } from '../components/AdvancedReceiptModal';
+import { DeleteButton } from '../components/DeleteButton';
 
 const NEXT_STAGE: Partial<Record<OrderStatus, OrderStatus>> = {
   Confirmed: 'Packing',
@@ -11,7 +12,7 @@ const NEXT_STAGE: Partial<Record<OrderStatus, OrderStatus>> = {
 };
 
 export const OrdersView: React.FC = () => {
-  const { state, advanceOrderStatus } = useInnoWear();
+  const { state, advanceOrderStatus, deleteOrder } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [channelFilter, setChannelFilter] = useState<'All' | 'POS' | 'Online'>('All');
@@ -130,10 +131,11 @@ export const OrdersView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedOrder(ord)}
-                        className="p-1.5 rounded-md border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                        aria-label={`View invoice ${ord.orderNumber}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] whitespace-nowrap"
+                        aria-label={`Open advanced receipt for ${ord.orderNumber}`}
                       >
-                        <Eye className="w-3.5 h-3.5" />
+                        <Receipt className="w-3.5 h-3.5 text-[var(--accent)]" />
+                        Receipt
                       </button>
                       {next && (
                         <button
@@ -145,6 +147,13 @@ export const OrdersView: React.FC = () => {
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
+                      <DeleteButton
+                        onConfirm={() => {
+                          if (selectedOrder?.id === ord.id) setSelectedOrder(null);
+                          deleteOrder(ord.id);
+                        }}
+                        ariaLabel={`Delete order ${ord.orderNumber}`}
+                      />
                     </div>
                   </td>
                 </tr>
@@ -154,95 +163,12 @@ export const OrdersView: React.FC = () => {
         </table>
       </div>
 
-      {/* Order Invoice Modal */}
-      <Modal
-        open={!!selectedOrder}
+      {/* Advanced Receipt Studio Modal */}
+      <AdvancedReceiptModal
+        order={selectedOrder}
         onClose={() => setSelectedOrder(null)}
-        title={selectedOrder ? `Order ${selectedOrder.orderNumber}` : ''}
-        subtitle={
-          selectedOrder
-            ? `${selectedOrder.channel} · ${selectedOrder.date} · ${selectedOrder.fulfillmentStatus}`
-            : ''
-        }
-      >
-        {selectedOrder && (
-          <div className="space-y-4 text-xs">
-            <div className="p-4 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] space-y-1">
-              <p className="text-[var(--text-primary)] font-medium">
-                Customer: {selectedOrder.customerName}
-              </p>
-              <p className="text-[var(--text-muted)]">
-                Payment: {selectedOrder.paymentMethod} ({selectedOrder.paymentStatus})
-              </p>
-              {selectedOrder.deliveryAddress && (
-                <p className="text-[var(--text-muted)]">
-                  Address: {selectedOrder.deliveryAddress}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              {selectedOrder.items.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex justify-between py-2 border-b border-[var(--border-hairline)]"
-                >
-                  <div>
-                    <p className="text-[var(--text-primary)] font-medium">{item.name}</p>
-                    <p className="text-[var(--text-muted)]">
-                      {item.sku} · Size {item.size} · {item.colour} · Qty {item.qty}
-                    </p>
-                  </div>
-                  <span className="font-mono-tabular text-[var(--text-primary)]">
-                    {c}
-                    {(item.unitPrice * item.qty).toFixed(2)}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-1 pt-1">
-              <div className="flex justify-between text-[var(--text-secondary)]">
-                <span>Subtotal</span>
-                <span className="font-mono-tabular">
-                  {c}
-                  {selectedOrder.subtotal.toFixed(2)}
-                </span>
-              </div>
-              {selectedOrder.discount > 0 && (
-                <div className="flex justify-between text-emerald-400">
-                  <span>Discount</span>
-                  <span className="font-mono-tabular">
-                    -{c}
-                    {selectedOrder.discount.toFixed(2)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between text-[var(--text-secondary)]">
-                <span>Delivery Fee</span>
-                <span className="font-mono-tabular">
-                  {c}
-                  {selectedOrder.deliveryFee.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-[var(--text-secondary)]">
-                <span>Tax</span>
-                <span className="font-mono-tabular">
-                  {c}
-                  {selectedOrder.tax.toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm font-semibold text-[var(--text-primary)] pt-2 border-t border-[var(--border-hairline)]">
-                <span>Order Total</span>
-                <span className="font-mono-tabular text-[var(--accent)]">
-                  {c}
-                  {selectedOrder.total.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
+        primaryActionLabel="Close"
+      />
     </div>
   );
 };

@@ -14,7 +14,7 @@ export const INITIAL_STATE: AppState = {
   settings: {
     storeName: 'InnoWear Fashion Collection',
     tagline: 'Your Business. Your Control. Your Growth.',
-    currencySymbol: '$',
+    currencySymbol: 'K',
     taxRate: 8,
     deliveryFeeStandard: 15,
     freeDeliveryThreshold: 250,
@@ -23,6 +23,26 @@ export const INITIAL_STATE: AppState = {
     lowStockAlerts: true,
     orderNotifications: true,
     offlineSyncEnabled: true,
+    storeAddress: 'Plot 14B Cairo Rd, Flagship Atelier, Lusaka',
+    storePhone: '+260 97 100 0001',
+    taxId: 'TPIN-1004928174',
+    receiptFooter:
+      'Unworn garments with original tags may be exchanged within 14 days with this receipt. Thank you for wearing InnoWear.',
+    showReceiptQr: true,
+    defaultReceiptFormat: 'thermal',
+    ownerName: 'Innocent Lombe',
+    ownerTitle: 'Founder & Owner',
+    ownerPhoto: '',
+    customerOrderingEnabled: true,
+    businessSlug: 'innowear-fashion-collection',
+    businessAppUrl: '',
+  },
+  adminSecurity: {
+    passwordHash: '',
+    isDefaultPassword: true,
+    protectAdminPanel: true,
+    requireLoginOnStart: false,
+    passwordUpdatedAt: '2026-11-18 09:30',
   },
   products: [
     {
@@ -611,7 +631,7 @@ export const INITIAL_STATE: AppState = {
   loyaltyRewards: [
     {
       id: 'rew-1',
-      title: '$25 Boutique Credit Voucher',
+      title: 'K25 Boutique Credit Voucher',
       pointsCost: 300,
       discountValue: 25,
       description: 'Redeemable on any apparel or footwear order in-store or online.',
@@ -627,7 +647,7 @@ export const INITIAL_STATE: AppState = {
     },
     {
       id: 'rew-3',
-      title: '$75 Private Tailoring Credit',
+      title: 'K75 Private Tailoring Credit',
       pointsCost: 850,
       discountValue: 75,
       description: 'Exclusive credit for Obsidian & Gold tier members on tailoring pieces.',

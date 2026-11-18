@@ -89,6 +89,11 @@ export interface Order {
   deliveryFee: number;
   tax: number;
   total: number;
+  cashTendered?: number;
+  changeDue?: number;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
+  receiptNotes?: string;
   staffName?: string;
   deliveryAddress?: string;
 }
@@ -221,6 +226,26 @@ export interface StoreSettings {
   lowStockAlerts: boolean;
   orderNotifications: boolean;
   offlineSyncEnabled: boolean;
+  storeAddress: string;
+  storePhone: string;
+  taxId: string;
+  receiptFooter: string;
+  showReceiptQr: boolean;
+  defaultReceiptFormat: 'thermal' | 'invoice';
+  ownerName: string;
+  ownerTitle: string;
+  ownerPhoto: string;
+  customerOrderingEnabled: boolean;
+  businessSlug: string;
+  businessAppUrl: string;
+}
+
+export interface AdminSecurity {
+  passwordHash: string;
+  isDefaultPassword: boolean;
+  protectAdminPanel: boolean;
+  requireLoginOnStart: boolean;
+  passwordUpdatedAt: string;
 }
 
 export interface AppState {
@@ -237,5 +262,6 @@ export interface AppState {
   loyaltyRewards: LoyaltyReward[];
   adminUsers: AdminUser[];
   settings: StoreSettings;
+  adminSecurity: AdminSecurity;
   lastSyncedAt: string;
 }

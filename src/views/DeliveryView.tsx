@@ -3,6 +3,7 @@ import { Plus, ArrowRight } from 'lucide-react';
 import { DeliveryStatus, DeliveryType } from '../types';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 
 const NEXT_DELIVERY: Partial<Record<DeliveryStatus, DeliveryStatus>> = {
   'Awaiting Pickup': 'In Transit',
@@ -11,7 +12,7 @@ const NEXT_DELIVERY: Partial<Record<DeliveryStatus, DeliveryStatus>> = {
 };
 
 export const DeliveryView: React.FC = () => {
-  const { state, advanceDeliveryStatus, addDelivery } = useInnoWear();
+  const { state, advanceDeliveryStatus, addDelivery, deleteDelivery } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [typeFilter, setTypeFilter] = useState<'All' | DeliveryType>('All');
@@ -174,18 +175,24 @@ export const DeliveryView: React.FC = () => {
                     <div className="text-[var(--text-muted)]">{del.eta}</div>
                   </td>
                   <td className="py-3.5 px-4 text-right">
-                    {next ? (
-                      <button
-                        type="button"
-                        onClick={() => advanceDeliveryStatus(del.id, next)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors whitespace-nowrap"
-                      >
-                        {next}
-                        <ArrowRight className="w-3 h-3" />
-                      </button>
-                    ) : (
-                      <span className="text-xs text-[var(--text-muted)]">Completed</span>
-                    )}
+                    <div className="inline-flex items-center justify-end gap-2">
+                      {next ? (
+                        <button
+                          type="button"
+                          onClick={() => advanceDeliveryStatus(del.id, next)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors whitespace-nowrap"
+                        >
+                          {next}
+                          <ArrowRight className="w-3 h-3" />
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">Completed</span>
+                      )}
+                      <DeleteButton
+                        onConfirm={() => deleteDelivery(del.id)}
+                        ariaLabel={`Delete delivery ${del.trackingCode}`}
+                      />
+                    </div>
                   </td>
                 </tr>
               );

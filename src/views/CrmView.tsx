@@ -3,9 +3,10 @@ import { Plus, Search, Mail, Phone, MapPin } from 'lucide-react';
 import { Customer, LoyaltyTier } from '../types';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 
 export const CrmView: React.FC = () => {
-  const { state, addCustomer } = useInnoWear();
+  const { state, addCustomer, deleteCustomer } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [search, setSearch] = useState('');
@@ -124,6 +125,7 @@ export const CrmView: React.FC = () => {
               <th className="py-3 px-4 font-medium text-right">Orders</th>
               <th className="py-3 px-4 font-medium text-right">Lifetime Spend</th>
               <th className="py-3 px-4 font-medium text-right">Loyalty</th>
+              <th className="py-3 px-4 font-medium text-right">Delete</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-hairline)] text-sm">
@@ -158,6 +160,15 @@ export const CrmView: React.FC = () => {
                   <div className="font-mono-tabular text-[var(--text-muted)]">
                     {cust.points.toLocaleString()} pts
                   </div>
+                </td>
+                <td className="py-3.5 px-4 text-right">
+                  <DeleteButton
+                    onConfirm={() => {
+                      if (selectedCustomer?.id === cust.id) setSelectedCustomer(null);
+                      deleteCustomer(cust.id);
+                    }}
+                    ariaLabel={`Delete customer ${cust.name}`}
+                  />
                 </td>
               </tr>
             ))}
@@ -233,6 +244,18 @@ export const CrmView: React.FC = () => {
                   ))}
                 </div>
               )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-[var(--border-hairline)]">
+              <DeleteButton
+                label="Delete Customer"
+                ariaLabel={`Delete customer ${selectedCustomer.name}`}
+                onConfirm={() => {
+                  const id = selectedCustomer.id;
+                  setSelectedCustomer(null);
+                  deleteCustomer(id);
+                }}
+              />
             </div>
           </div>
         )}

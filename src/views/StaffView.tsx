@@ -3,9 +3,10 @@ import { Plus } from 'lucide-react';
 import { AttendanceStatus } from '../types';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 
 export const StaffView: React.FC = () => {
-  const { state, updateStaffAttendance, addStaffMember } = useInnoWear();
+  const { state, updateStaffAttendance, addStaffMember, deleteStaffMember } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [showAdd, setShowAdd] = useState(false);
@@ -108,23 +109,29 @@ export const StaffView: React.FC = () => {
                     Shift {member.shift} · {member.phone}
                   </p>
                 </div>
-                <div className="text-right text-xs">
-                  <span
-                    className={`font-medium ${
-                      member.attendance === 'Present'
-                        ? 'text-emerald-400'
-                        : member.attendance === 'On Leave'
-                        ? 'text-amber-400'
-                        : 'text-[var(--text-muted)]'
-                    }`}
-                  >
-                    {member.attendance}
-                  </span>
-                  {member.checkInTime && (
-                    <p className="font-mono-tabular text-[var(--text-muted)] mt-0.5">
-                      In {member.checkInTime}
-                    </p>
-                  )}
+                <div className="flex items-start gap-2.5 shrink-0">
+                  <div className="text-right text-xs">
+                    <span
+                      className={`font-medium ${
+                        member.attendance === 'Present'
+                          ? 'text-emerald-400'
+                          : member.attendance === 'On Leave'
+                          ? 'text-amber-400'
+                          : 'text-[var(--text-muted)]'
+                      }`}
+                    >
+                      {member.attendance}
+                    </span>
+                    {member.checkInTime && (
+                      <p className="font-mono-tabular text-[var(--text-muted)] mt-0.5">
+                        In {member.checkInTime}
+                      </p>
+                    )}
+                  </div>
+                  <DeleteButton
+                    onConfirm={() => deleteStaffMember(member.id)}
+                    ariaLabel={`Delete staff member ${member.name}`}
+                  />
                 </div>
               </div>
 

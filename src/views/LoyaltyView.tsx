@@ -2,9 +2,16 @@ import React, { useState } from 'react';
 import { Award, Gift } from 'lucide-react';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 
 export const LoyaltyView: React.FC = () => {
-  const { state, redeemLoyaltyReward, awardBonusPoints } = useInnoWear();
+  const {
+    state,
+    redeemLoyaltyReward,
+    awardBonusPoints,
+    deleteLoyaltyReward,
+    deleteCustomer,
+  } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [selectedCustomerId, setSelectedCustomerId] = useState(state.customers[0]?.id || '');
@@ -107,16 +114,22 @@ export const LoyaltyView: React.FC = () => {
                       {rew.pointsCost} pts required · {rew.redemptions} total redemptions
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!canAfford}
-                    onClick={() =>
-                      selectedCustomer && redeemLoyaltyReward(selectedCustomer.id, rew.id)
-                    }
-                    className="px-4 py-2 text-xs font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] disabled:opacity-35 transition-colors whitespace-nowrap shrink-0"
-                  >
-                    Redeem ({rew.pointsCost} pts)
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      disabled={!canAfford}
+                      onClick={() =>
+                        selectedCustomer && redeemLoyaltyReward(selectedCustomer.id, rew.id)
+                      }
+                      className="px-4 py-2 text-xs font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] disabled:opacity-35 transition-colors whitespace-nowrap shrink-0"
+                    >
+                      Redeem ({rew.pointsCost} pts)
+                    </button>
+                    <DeleteButton
+                      onConfirm={() => deleteLoyaltyReward(rew.id)}
+                      ariaLabel={`Delete reward ${rew.title}`}
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -145,14 +158,20 @@ export const LoyaltyView: React.FC = () => {
                     {cust.totalSpent.toFixed(0)}
                   </p>
                 </div>
-                <div className="text-right font-mono-tabular">
-                  <p className="text-sm font-semibold text-[var(--accent)]">
-                    {cust.points.toLocaleString()} pts
-                  </p>
-                  <p className="text-[var(--text-muted)]">
-                    Value {c}
-                    {(cust.points * state.settings.pointValueDollars).toFixed(2)}
-                  </p>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="text-right font-mono-tabular">
+                    <p className="text-sm font-semibold text-[var(--accent)]">
+                      {cust.points.toLocaleString()} pts
+                    </p>
+                    <p className="text-[var(--text-muted)]">
+                      Value {c}
+                      {(cust.points * state.settings.pointValueDollars).toFixed(2)}
+                    </p>
+                  </div>
+                  <DeleteButton
+                    onConfirm={() => deleteCustomer(cust.id)}
+                    ariaLabel={`Delete loyalty member ${cust.name}`}
+                  />
                 </div>
               </div>
             ))}

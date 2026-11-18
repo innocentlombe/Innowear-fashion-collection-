@@ -7,14 +7,12 @@ import {
   CreditCard,
   Banknote,
   Smartphone,
-  CheckCircle2,
-  Receipt,
-  UserCheck,
 } from 'lucide-react';
 import { Order, OrderItem, PaymentMethod, Product, ProductCategory } from '../types';
 import { useInnoWear, getProductTotalStock } from '../store/useInnoWearStore';
 import { ProductImage } from '../components/ProductImage';
 import { Modal } from '../components/Modal';
+import { AdvancedReceiptModal } from '../components/AdvancedReceiptModal';
 
 export const PosView: React.FC = () => {
   const { state, completeSale, notify } = useInnoWear();
@@ -23,13 +21,12 @@ export const PosView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'All' | ProductCategory>('All');
   const [cart, setCart] = useState<OrderItem[]>([]);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [selectedStaff, setSelectedStaff] = useState<string>(state.staff[1]?.name || state.staff[0]?.name || 'Store Cashier');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Card');
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<string>('');
-  const [redeemPoints, setRedeemPoints] = useState<boolean>(false);
   const [cashTendered, setCashTendered] = useState<string>('');
+  const [receiptNotes, setReceiptNotes] = useState<string>('');
 
   // Variant selector state
   const [pickingProduct, setPickingProduct] = useState<Product | null>(null);
@@ -60,8 +57,6 @@ export const PosView: React.FC = () => {
       return matchCat && matchSearch;
     });
   }, [state.products, category, search]);
-
-  const selectedCustomer = state.customers.find((cust) => cust.id === selectedCustomerId);
 
   const openVariantPicker = (product: Product) => {
     const availableSize =
@@ -134,12 +129,7 @@ export const PosView: React.FC = () => {
   const promoDiscount = activeCampaign
     ? Number(((subtotal * activeCampaign.discountPercent) / 100).toFixed(2))
     : 0;
-  const redeemablePoints =
-    redeemPoints && selectedCustomer ? Math.min(selectedCustomer.points, 500) : 0;
-  const pointsDiscount = Number(
-    (redeemablePoints * state.settings.pointValueDollars).toFixed(2)
-  );
-  const totalDiscount = Math.min(subtotal, Number((promoDiscount + pointsDiscount).toFixed(2)));
+  const totalDiscount = Math.min(subtotal, promoDiscount);
   const taxable = Math.max(0, subtotal - totalDiscount);
   const tax = Number(((taxable * state.settings.taxRate) / 100).toFixed(2));
   const grandTotal = Number((taxable + tax).toFixed(2));
@@ -170,18 +160,19 @@ export const PosView: React.FC = () => {
       items: cart,
       channel: 'POS',
       paymentMethod,
-      customerId: selectedCustomer?.id,
-      customerName: selectedCustomer?.name || 'Walk-in Guest',
+      customerName: 'Walk-in Guest',
       promoCode: appliedPromo || undefined,
-      pointsRedeemed: redeemablePoints,
       staffName: selectedStaff,
+      cashTendered: paymentMethod === 'Cash' && cashNumber > 0 ? cashNumber : undefined,
+      changeDue: paymentMethod === 'Cash' && changeDue > 0 ? Number(changeDue.toFixed(2)) : undefined,
+      receiptNotes: receiptNotes.trim() || undefined,
     });
     setLastReceipt(order);
     setCart([]);
     setAppliedPromo('');
     setPromoInput('');
-    setRedeemPoints(false);
     setCashTendered('');
+    setReceiptNotes('');
   };
 
   return (
@@ -290,66 +281,23 @@ export const PosView: React.FC = () => {
           )}
         </div>
 
-        {/* Customer & Cashier Select */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">
-              Customer (Loyalty & CRM)
-            </label>
-            <select
-              value={selectedCustomerId}
-              onChange={(e) => {
-                setSelectedCustomerId(e.target.value);
-                setRedeemPoints(false);
-              }}
-              className="w-full px-3 py-2 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-            >
-              <option value="">Walk-in Guest</option>
-              {state.customers.map((cust) => (
-                <option key={cust.id} value={cust.id}>
-                  {cust.name} ({cust.tier} · {cust.points} pts)
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">
-              Sales Associate
-            </label>
-            <select
-              value={selectedStaff}
-              onChange={(e) => setSelectedStaff(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-            >
-              {state.staff.map((stf) => (
-                <option key={stf.id} value={stf.name}>
-                  {stf.name} — {stf.role}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Loyalty Points Toggle */}
-        {selectedCustomer && selectedCustomer.points >= 50 && (
-          <label className="flex items-center justify-between gap-2 p-3 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] cursor-pointer">
-            <div className="flex items-center gap-2 text-xs">
-              <UserCheck className="w-4 h-4 text-[var(--accent)] shrink-0" />
-              <span className="text-[var(--text-primary)]">
-                Redeem {Math.min(selectedCustomer.points, 500)} pts (
-                {c}
-                {(Math.min(selectedCustomer.points, 500) * state.settings.pointValueDollars).toFixed(2)} off)
-              </span>
-            </div>
-            <input
-              type="checkbox"
-              checked={redeemPoints}
-              onChange={(e) => setRedeemPoints(e.target.checked)}
-              className="accent-[var(--accent)]"
-            />
+        {/* Sales Associate Select */}
+        <div>
+          <label className="block text-xs text-[var(--text-muted)] mb-1">
+            Sales Associate
           </label>
-        )}
+          <select
+            value={selectedStaff}
+            onChange={(e) => setSelectedStaff(e.target.value)}
+            className="w-full px-3 py-2 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+          >
+            {state.staff.map((stf) => (
+              <option key={stf.id} value={stf.name}>
+                {stf.name} — {stf.role}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Basket Items */}
         <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
@@ -424,7 +372,9 @@ export const PosView: React.FC = () => {
 
         {/* Payment Method */}
         <div>
-          <span className="block text-xs text-[var(--text-muted)] mb-2">Payment Method</span>
+          <span className="block text-xs text-[var(--text-muted)] mb-2">
+            Payment Method (Kwacha · ZMW)
+          </span>
           <div className="grid grid-cols-3 gap-2">
             {(
               [
@@ -456,7 +406,7 @@ export const PosView: React.FC = () => {
         {paymentMethod === 'Cash' && (
           <div className="flex items-center justify-between gap-3">
             <label className="text-xs text-[var(--text-muted)] whitespace-nowrap">
-              Cash Received
+              Cash Received ({c} / ZMW)
             </label>
             <input
               type="number"
@@ -470,15 +420,19 @@ export const PosView: React.FC = () => {
           </div>
         )}
 
+        {/* Optional Receipt Note */}
+        <div>
+          <input
+            type="text"
+            value={receiptNotes}
+            onChange={(e) => setReceiptNotes(e.target.value)}
+            placeholder="Receipt note (e.g. Tailoring pickup, gift box)"
+            className="w-full px-3 py-1.5 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+          />
+        </div>
+
         {/* Totals Summary */}
         <div className="space-y-1.5 pt-3 border-t border-[var(--border-hairline)] text-xs">
-          <div className="flex justify-between text-[var(--text-secondary)]">
-            <span>Subtotal</span>
-            <span className="font-mono-tabular">
-              {c}
-              {subtotal.toFixed(2)}
-            </span>
-          </div>
           {totalDiscount > 0 && (
             <div className="flex justify-between text-emerald-400">
               <span>Discount {appliedPromo ? `(${appliedPromo})` : ''}</span>
@@ -604,90 +558,12 @@ export const PosView: React.FC = () => {
         )}
       </Modal>
 
-      {/* Thermal Receipt Modal */}
-      <Modal
-        open={!!lastReceipt}
+      {/* Advanced Receipt Studio Modal */}
+      <AdvancedReceiptModal
+        order={lastReceipt}
         onClose={() => setLastReceipt(null)}
-        title="Sale Receipt Issued"
-        subtitle={lastReceipt ? `${lastReceipt.orderNumber} · ${lastReceipt.date}` : ''}
-      >
-        {lastReceipt && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Payment settled via {lastReceipt.paymentMethod}</span>
-            </div>
-
-            <div className="p-4 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] space-y-3 text-xs">
-              <div className="flex items-center justify-between pb-2 border-b border-[var(--border-hairline)]">
-                <span className="font-display text-base font-semibold text-[var(--text-primary)]">
-                  {state.settings.storeName}
-                </span>
-                <Receipt className="w-4 h-4 text-[var(--accent)]" />
-              </div>
-              <div className="text-[var(--text-muted)] space-y-0.5">
-                <p>Customer: {lastReceipt.customerName}</p>
-                <p>Served by: {lastReceipt.staffName || 'POS Desk'}</p>
-              </div>
-              <div className="space-y-1.5 pt-2 border-t border-[var(--border-hairline)]">
-                {lastReceipt.items.map((item, i) => (
-                  <div key={i} className="flex justify-between gap-2">
-                    <span className="text-[var(--text-primary)]">
-                      {item.qty}x {item.name} ({item.size})
-                    </span>
-                    <span className="font-mono-tabular">
-                      {c}
-                      {(item.unitPrice * item.qty).toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <div className="pt-2 border-t border-[var(--border-hairline)] space-y-1">
-                {lastReceipt.discount > 0 && (
-                  <div className="flex justify-between text-emerald-400">
-                    <span>Discount</span>
-                    <span className="font-mono-tabular">
-                      -{c}
-                      {lastReceipt.discount.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between text-[var(--text-secondary)]">
-                  <span>Tax</span>
-                  <span className="font-mono-tabular">
-                    {c}
-                    {lastReceipt.tax.toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm font-semibold text-[var(--text-primary)] pt-1">
-                  <span>Total Paid</span>
-                  <span className="font-mono-tabular text-[var(--accent)]">
-                    {c}
-                    {lastReceipt.total.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-4 py-2 text-xs font-medium rounded-md border border-[var(--border-strong)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-              >
-                Print Receipt
-              </button>
-              <button
-                type="button"
-                onClick={() => setLastReceipt(null)}
-                className="px-4 py-2 text-xs font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)]"
-              >
-                Next Customer
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+        primaryActionLabel="New Sale"
+      />
     </div>
   );
 };

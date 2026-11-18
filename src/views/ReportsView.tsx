@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useInnoWear } from '../store/useInnoWearStore';
+import { DeleteButton } from '../components/DeleteButton';
 
 type ReportPeriod = 'Daily' | 'Weekly' | 'Monthly';
 
 export const ReportsView: React.FC = () => {
-  const { state, notify } = useInnoWear();
+  const { state, deleteOrder, notify } = useInnoWear();
   const c = state.settings.currencySymbol;
   const [period, setPeriod] = useState<ReportPeriod>('Weekly');
 
@@ -86,7 +87,7 @@ export const ReportsView: React.FC = () => {
   }, [state.orders]);
 
   const handleDownloadCsv = () => {
-    const headers = ['Order Number', 'Date', 'Channel', 'Customer', 'Payment', 'Status', 'Total'];
+    const headers = ['Order Number', 'Date', 'Channel', 'Customer', 'Payment', 'Status', 'Total (ZMW)'];
     const rows = state.orders.map((o) => [
       o.orderNumber,
       o.date,
@@ -280,6 +281,62 @@ export const ReportsView: React.FC = () => {
                   <td className="py-3 px-4 text-right font-mono-tabular font-semibold text-[var(--accent)]">
                     {c}
                     {item.revenue.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Report Sales Entries (Delete updates metrics immediately) */}
+      <div className="rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--border-hairline)] flex items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--text-primary)]">
+              Sales Records in {period} Report ({state.orders.length})
+            </h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Removing a record immediately recalculates revenue, COGS, and margins
+            </p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-[var(--border-hairline)] text-xs text-[var(--text-muted)]">
+                <th className="py-3 px-4 font-medium">Order #</th>
+                <th className="py-3 px-4 font-medium">Customer & Channel</th>
+                <th className="py-3 px-4 font-medium">Payment</th>
+                <th className="py-3 px-4 font-medium text-right">Amount</th>
+                <th className="py-3 px-4 font-medium text-right">Delete</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border-hairline)] text-sm">
+              {state.orders.map((ord) => (
+                <tr key={ord.id} className="hover:bg-[var(--bg-elevated)]/60 transition-colors">
+                  <td className="py-3 px-4 font-mono-tabular text-xs">
+                    <div className="font-semibold text-[var(--text-primary)]">
+                      {ord.orderNumber}
+                    </div>
+                    <div className="text-[var(--text-muted)]">{ord.date}</div>
+                  </td>
+                  <td className="py-3 px-4 text-xs">
+                    <div className="font-medium text-[var(--text-primary)]">{ord.customerName}</div>
+                    <div className="text-[var(--text-muted)]">{ord.channel}</div>
+                  </td>
+                  <td className="py-3 px-4 text-xs text-[var(--text-secondary)]">
+                    {ord.paymentMethod}
+                  </td>
+                  <td className="py-3 px-4 text-right font-mono-tabular font-semibold text-[var(--accent)]">
+                    {c}
+                    {ord.total.toFixed(2)}
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <DeleteButton
+                      onConfirm={() => deleteOrder(ord.id)}
+                      ariaLabel={`Delete report record ${ord.orderNumber}`}
+                    />
                   </td>
                 </tr>
               ))}

@@ -1,13 +1,16 @@
-import React, { useMemo, useState } from 'react';
-import { Plus, Search, Minus } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Plus, Search, Minus, Upload, Camera, X } from 'lucide-react';
 import { ProductCategory } from '../types';
 import { useInnoWear, getProductTotalStock } from '../store/useInnoWearStore';
 import { ProductImage } from '../components/ProductImage';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 import { IMAGES } from '../data/seedData';
+import { processUploadedImage } from '../utils/imageUpload';
 
 export const InventoryView: React.FC = () => {
-  const { state, addProduct, adjustStock } = useInnoWear();
+  const { state, addProduct, updateProductImage, deleteProduct, adjustStock, notify } =
+    useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [search, setSearch] = useState('');
@@ -25,7 +28,49 @@ export const InventoryView: React.FC = () => {
   const [initialQty, setInitialQty] = useState('6');
   const [isNewArrival, setIsNewArrival] = useState(true);
   const [imageChoice, setImageChoice] = useState(IMAGES.blazer);
+  const [uploadedPreview, setUploadedPreview] = useState<string>('');
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [uploadingModalImg, setUploadingModalImg] = useState(false);
   const [description, setDescription] = useState('');
+
+  // Inline product row photo upload
+  const rowFileInputRef = useRef<HTMLInputElement | null>(null);
+  const modalFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [targetProductId, setTargetProductId] = useState<string | null>(null);
+
+  const handleTriggerRowUpload = (productId: string) => {
+    setTargetProductId(productId);
+    rowFileInputRef.current?.click();
+  };
+
+  const handleRowFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !targetProductId) return;
+    try {
+      const dataUrl = await processUploadedImage(file, { maxDimension: 720, quality: 0.82 });
+      updateProductImage(targetProductId, dataUrl);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Failed to upload product picture.');
+    } finally {
+      setTargetProductId(null);
+    }
+  };
+
+  const handleModalFileUpload = async (file: File | undefined) => {
+    if (!file) return;
+    setUploadingModalImg(true);
+    try {
+      const dataUrl = await processUploadedImage(file, { maxDimension: 720, quality: 0.82 });
+      setUploadedPreview(dataUrl);
+      setUploadedFileName(file.name);
+      notify(`Loaded picture "${file.name}".`);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Could not process selected picture.');
+    } finally {
+      setUploadingModalImg(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return state.products.filter((p) => {
@@ -80,7 +125,7 @@ export const InventoryView: React.FC = () => {
       stockBySize,
       reorderLevel: 4,
       isNewArrival,
-      image: imageChoice,
+      image: uploadedPreview || imageChoice,
       description:
         description.trim() ||
         'Signature InnoWear Fashion Collection garment crafted for contemporary luxury.',
@@ -90,11 +135,23 @@ export const InventoryView: React.FC = () => {
     setName('');
     setSku('');
     setDescription('');
+    setUploadedPreview('');
+    setUploadedFileName('');
     setShowAdd(false);
   };
 
   return (
     <div className="space-y-6">
+      {/* Hidden input for quick per-product photo upload */}
+      <input
+        ref={rowFileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleRowFileChange}
+        className="hidden"
+        aria-label="Upload product picture"
+      />
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-[var(--text-primary)]">
@@ -194,6 +251,7 @@ export const InventoryView: React.FC = () => {
               <th className="py-3 px-4 font-medium">Size Breakdown (Adjust +/-)</th>
               <th className="py-3 px-4 font-medium text-right">Cost / Retail</th>
               <th className="py-3 px-4 font-medium text-right">Total Stock</th>
+              <th className="py-3 px-4 font-medium text-right">Delete</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-hairline)] text-sm">
@@ -204,13 +262,22 @@ export const InventoryView: React.FC = () => {
                 <tr key={prod.id} className="hover:bg-[var(--bg-elevated)]/60 transition-colors">
                   <td className="py-3.5 px-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-md overflow-hidden bg-[var(--bg-elevated)] shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleTriggerRowUpload(prod.id)}
+                        title="Upload or change product picture"
+                        aria-label={`Upload picture for ${prod.name}`}
+                        className="group relative w-14 h-14 rounded-md overflow-hidden bg-[var(--bg-elevated)] border border-[var(--border-hairline)] hover:border-[var(--accent)] shrink-0 transition-colors"
+                      >
                         <ProductImage
                           src={prod.image}
                           alt={prod.name}
                           className="w-full h-full object-cover"
                         />
-                      </div>
+                        <span className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                          <Camera className="w-4 h-4" />
+                        </span>
+                      </button>
                       <div className="min-w-0">
                         <p className="font-medium text-[var(--text-primary)] truncate max-w-[240px]">
                           {prod.name}
@@ -219,6 +286,14 @@ export const InventoryView: React.FC = () => {
                           {prod.sku} · {prod.category}
                           {prod.isNewArrival ? ' · New Arrival' : ''}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => handleTriggerRowUpload(prod.id)}
+                          className="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-[var(--accent)] hover:underline whitespace-nowrap"
+                        >
+                          <Upload className="w-3 h-3" />
+                          Upload Picture
+                        </button>
                       </div>
                     </div>
                   </td>
@@ -284,6 +359,12 @@ export const InventoryView: React.FC = () => {
                     <div className="text-[11px] text-[var(--text-muted)]">
                       {isLow ? 'Reorder soon' : 'Healthy'}
                     </div>
+                  </td>
+                  <td className="py-3.5 px-4 text-right">
+                    <DeleteButton
+                      onConfirm={() => deleteProduct(prod.id)}
+                      ariaLabel={`Delete ${prod.name}`}
+                    />
                   </td>
                 </tr>
               );
@@ -401,19 +482,95 @@ export const InventoryView: React.FC = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block text-[var(--text-secondary)] mb-1">Studio Photography</label>
-            <select
-              value={imageChoice}
-              onChange={(e) => setImageChoice(e.target.value)}
-              className="w-full px-3 py-2 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)]"
+          {/* Product Picture Upload */}
+          <div className="space-y-2.5">
+            <label className="block text-[var(--text-secondary)]">Product Picture</label>
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                void handleModalFileUpload(e.dataTransfer.files?.[0]);
+              }}
+              className="flex flex-col sm:flex-row items-center gap-4 p-3.5 rounded-md bg-[var(--bg-elevated)] border border-dashed border-[var(--border-strong)] hover:border-[var(--accent)] transition-colors"
             >
-              <option value={IMAGES.blazer}>Tailored Wool Blazer Studio Shot</option>
-              <option value={IMAGES.sneakers}>Matte Calfskin Sneaker Studio Shot</option>
-              <option value={IMAGES.dress}>Midnight Silk Dress Studio Shot</option>
-              <option value={IMAGES.tote}>Structured Leather Tote Studio Shot</option>
-              <option value={IMAGES.hero}>Obsidian Editorial Campaign Shot</option>
-            </select>
+              <div className="w-20 h-20 rounded-md overflow-hidden bg-[var(--bg-surface)] border border-[var(--border-hairline)] shrink-0">
+                <ProductImage
+                  src={uploadedPreview || imageChoice}
+                  alt={name || 'Product preview'}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              <div className="flex-1 min-w-0 space-y-2 text-center sm:text-left">
+                <div>
+                  <p className="text-xs font-medium text-[var(--text-primary)] truncate">
+                    {uploadedFileName || 'Upload photo from device or drop image here'}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    JPG, PNG, or WebP · Automatically optimized for offline storage
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <input
+                    ref={modalFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      void handleModalFileUpload(e.target.files?.[0]);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={uploadingModalImg}
+                    onClick={() => modalFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {uploadingModalImg
+                      ? 'Optimizing...'
+                      : uploadedPreview
+                      ? 'Replace Picture'
+                      : 'Upload Picture'}
+                  </button>
+
+                  {uploadedPreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadedPreview('');
+                        setUploadedFileName('');
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs rounded-md border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] whitespace-nowrap"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {!uploadedPreview && (
+              <div>
+                <label className="block text-[11px] text-[var(--text-muted)] mb-1">
+                  Or choose built-in studio shot
+                </label>
+                <select
+                  value={imageChoice}
+                  onChange={(e) => setImageChoice(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)]"
+                >
+                  <option value={IMAGES.blazer}>Tailored Wool Blazer Studio Shot</option>
+                  <option value={IMAGES.sneakers}>Matte Calfskin Sneaker Studio Shot</option>
+                  <option value={IMAGES.dress}>Midnight Silk Dress Studio Shot</option>
+                  <option value={IMAGES.tote}>Structured Leather Tote Studio Shot</option>
+                  <option value={IMAGES.hero}>Obsidian Editorial Campaign Shot</option>
+                </select>
+              </div>
+            )}
           </div>
 
           <div>

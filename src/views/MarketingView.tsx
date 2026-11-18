@@ -3,9 +3,10 @@ import { Plus, Power } from 'lucide-react';
 import { PromoCampaign } from '../types';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 
 export const MarketingView: React.FC = () => {
-  const { state, addCampaign, toggleCampaignStatus } = useInnoWear();
+  const { state, addCampaign, toggleCampaignStatus, deleteCampaign } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [showAdd, setShowAdd] = useState(false);
@@ -132,6 +133,10 @@ export const MarketingView: React.FC = () => {
                       <Power className="w-3 h-3" />
                       {camp.status === 'Active' ? 'Pause' : 'Activate'}
                     </button>
+                    <DeleteButton
+                      onConfirm={() => deleteCampaign(camp.id)}
+                      ariaLabel={`Delete campaign ${camp.name}`}
+                    />
                   </div>
                 </td>
               </tr>

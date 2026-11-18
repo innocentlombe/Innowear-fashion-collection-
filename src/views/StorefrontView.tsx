@@ -1,16 +1,38 @@
 import React, { useMemo, useState } from 'react';
-import { ShoppingBag, X, Plus, Minus, CheckCircle2, Truck, Store } from 'lucide-react';
+import {
+  ShoppingBag,
+  X,
+  Plus,
+  Minus,
+  CheckCircle2,
+  Truck,
+  Store,
+  Receipt,
+  Trash2,
+  Share2,
+  Search,
+} from 'lucide-react';
 import { Order, OrderItem, Product, ProductCategory } from '../types';
 import { useInnoWear, getProductTotalStock } from '../store/useInnoWearStore';
 import { ProductImage } from '../components/ProductImage';
 import { Modal } from '../components/Modal';
+import { AdvancedReceiptModal } from '../components/AdvancedReceiptModal';
 import { IMAGES } from '../data/seedData';
 
-export const StorefrontView: React.FC = () => {
+interface StorefrontViewProps {
+  customerMode?: boolean;
+  onOpenCustomerAccess?: () => void;
+}
+
+export const StorefrontView: React.FC<StorefrontViewProps> = ({
+  customerMode = false,
+  onOpenCustomerAccess,
+}) => {
   const { state, completeSale, notify } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [category, setCategory] = useState<'All' | ProductCategory>('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [bag, setBag] = useState<OrderItem[]>([]);
   const [bagOpen, setBagOpen] = useState(false);
 
@@ -28,6 +50,7 @@ export const StorefrontView: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'Card' | 'Mobile Money' | 'Cash on Delivery'>('Card');
   const [promoCode, setPromoCode] = useState('');
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
+  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
 
   const categories: Array<'All' | ProductCategory> = [
     'All',
@@ -38,10 +61,18 @@ export const StorefrontView: React.FC = () => {
     'Accessories',
   ];
 
-  const visibleProducts = useMemo(
-    () => state.products.filter((p) => category === 'All' || p.category === category),
-    [state.products, category]
-  );
+  const visibleProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return state.products.filter((p) => {
+      const matchCat = category === 'All' || p.category === category;
+      const matchQuery =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.colours.some((col) => col.toLowerCase().includes(q));
+      return matchCat && matchQuery;
+    });
+  }, [state.products, category, searchQuery]);
 
   const openPdp = (prod: Product) => {
     setActiveProduct(prod);
@@ -139,23 +170,37 @@ export const StorefrontView: React.FC = () => {
   return (
     <div className="space-y-8">
       {/* Storefront Header Bar */}
-      <div className="flex items-center justify-between gap-4 pb-4 border-b border-[var(--border-hairline)]">
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-hairline)]">
         <div>
           <span className="font-display text-2xl font-semibold tracking-wide text-[var(--text-primary)]">
-            INNOWEAR
+            {customerMode ? state.settings.storeName : 'INNOWEAR'}
           </span>
           <span className="ml-3 text-xs text-[var(--text-muted)]">
-            Online Storefront · Live Sync with Inventory & Orders
+            {customerMode
+              ? 'Official Boutique Collection · Pay in Kwacha (ZMW)'
+              : 'Online Storefront · Live Sync with Inventory & Orders'}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={() => setBagOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] transition-colors whitespace-nowrap shrink-0"
-        >
-          <ShoppingBag className="w-4 h-4" />
-          Shopping Bag ({bag.reduce((s, i) => s + i.qty, 0)})
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {!customerMode && onOpenCustomerAccess && (
+            <button
+              type="button"
+              onClick={onOpenCustomerAccess}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors whitespace-nowrap"
+            >
+              <Share2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+              Give Customer Access
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setBagOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] transition-colors whitespace-nowrap shrink-0"
+          >
+            <ShoppingBag className="w-4 h-4" />
+            Shopping Bag ({bag.reduce((s, i) => s + i.qty, 0)})
+          </button>
+        </div>
       </div>
 
       {/* Campaign Hero */}
@@ -180,9 +225,9 @@ export const StorefrontView: React.FC = () => {
         </div>
       </section>
 
-      {/* Collection Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto">
+      {/* Collection Filters & Search */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
           {categories.map((cat) => (
             <button
               key={cat}
@@ -198,9 +243,21 @@ export const StorefrontView: React.FC = () => {
             </button>
           ))}
         </div>
-        <span className="text-xs text-[var(--text-muted)]">
-          Showing {visibleProducts.length} pieces
-        </span>
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 sm:w-56">
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search styles or colours..."
+              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+          <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
+            {visibleProducts.length} pieces
+          </span>
+        </div>
       </div>
 
       {/* 3-Column Luxury Product Grid */}
@@ -359,13 +416,24 @@ export const StorefrontView: React.FC = () => {
               <h2 className="text-base font-semibold text-[var(--text-primary)]">
                 Shopping Bag & Checkout
               </h2>
-              <button
-                type="button"
-                onClick={() => setBagOpen(false)}
-                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-3">
+                {bag.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setBag([])}
+                    className="text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors whitespace-nowrap"
+                  >
+                    Clear Bag
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setBagOpen(false)}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -405,6 +473,14 @@ export const StorefrontView: React.FC = () => {
                             className="p-1 rounded bg-[var(--bg-elevated)]"
                           >
                             <Plus className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateBagQty(idx, -item.qty)}
+                            aria-label={`Remove ${item.name} from bag`}
+                            className="p-1 text-[var(--text-muted)] hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -487,9 +563,9 @@ export const StorefrontView: React.FC = () => {
                         }
                         className="w-full px-3 py-2 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)]"
                       >
-                        <option value="Card">Debit / Credit Card</option>
-                        <option value="Mobile Money">Mobile Money</option>
-                        <option value="Cash on Delivery">Cash on Delivery (COD)</option>
+                        <option value="Card">Debit / Credit Card (ZMW)</option>
+                        <option value="Mobile Money">Mobile Money — MTN / Airtel (ZMW)</option>
+                        <option value="Cash on Delivery">Cash on Delivery — Kwacha (COD)</option>
                       </select>
                       <input
                         value={promoCode}
@@ -500,13 +576,6 @@ export const StorefrontView: React.FC = () => {
                     </div>
 
                     <div className="pt-3 border-t border-[var(--border-hairline)] space-y-1.5">
-                      <div className="flex justify-between text-[var(--text-secondary)]">
-                        <span>Subtotal</span>
-                        <span className="font-mono-tabular">
-                          {c}
-                          {subtotal.toFixed(2)}
-                        </span>
-                      </div>
                       {discount > 0 && (
                         <div className="flex justify-between text-emerald-400">
                           <span>Promo ({activePromo?.promoCode})</span>
@@ -586,11 +655,23 @@ export const StorefrontView: React.FC = () => {
                 </span>
               </div>
             </div>
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = confirmedOrder;
+                  setConfirmedOrder(null);
+                  setReceiptOrder(target);
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] whitespace-nowrap"
+              >
+                <Receipt className="w-3.5 h-3.5 text-[var(--accent)]" />
+                View / Print Receipt
+              </button>
               <button
                 type="button"
                 onClick={() => setConfirmedOrder(null)}
-                className="px-4 py-2 font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)]"
+                className="px-4 py-2 font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] whitespace-nowrap"
               >
                 Continue Shopping
               </button>
@@ -598,6 +679,13 @@ export const StorefrontView: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      {/* Advanced Receipt Studio Modal */}
+      <AdvancedReceiptModal
+        order={receiptOrder}
+        onClose={() => setReceiptOrder(null)}
+        primaryActionLabel="Done"
+      />
     </div>
   );
 };

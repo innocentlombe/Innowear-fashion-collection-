@@ -3,9 +3,10 @@ import { Plus, Check } from 'lucide-react';
 import { TransactionType } from '../types';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { Modal } from '../components/Modal';
+import { DeleteButton } from '../components/DeleteButton';
 
 export const AccountingView: React.FC = () => {
-  const { state, addTransaction, settleTransaction } = useInnoWear();
+  const { state, addTransaction, settleTransaction, deleteTransaction } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [typeFilter, setTypeFilter] = useState<'All' | TransactionType>('All');
@@ -185,18 +186,24 @@ export const AccountingView: React.FC = () => {
                     {txn.amount.toFixed(2)}
                   </td>
                   <td className="py-3.5 px-4 text-right text-xs">
-                    {txn.status === 'Pending' ? (
-                      <button
-                        type="button"
-                        onClick={() => settleTransaction(txn.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors whitespace-nowrap"
-                      >
-                        <Check className="w-3 h-3" />
-                        Mark Settled
-                      </button>
-                    ) : (
-                      <span className="text-[var(--text-muted)]">Settled</span>
-                    )}
+                    <div className="inline-flex items-center justify-end gap-2">
+                      {txn.status === 'Pending' ? (
+                        <button
+                          type="button"
+                          onClick={() => settleTransaction(txn.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-fg)] transition-colors whitespace-nowrap"
+                        >
+                          <Check className="w-3 h-3" />
+                          Mark Settled
+                        </button>
+                      ) : (
+                        <span className="text-[var(--text-muted)]">Settled</span>
+                      )}
+                      <DeleteButton
+                        onConfirm={() => deleteTransaction(txn.id)}
+                        ariaLabel={`Delete transaction ${txn.reference}`}
+                      />
+                    </div>
                   </td>
                 </tr>
               );
