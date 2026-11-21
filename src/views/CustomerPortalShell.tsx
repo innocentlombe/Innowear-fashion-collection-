@@ -10,13 +10,19 @@ import {
   CheckCircle2,
   Truck,
   Clock,
+  MessageCircle,
 } from 'lucide-react';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { StorefrontView } from './StorefrontView';
 import { PWAInstallButton } from '../components/PWAInstallButton';
 import { Modal } from '../components/Modal';
 import { OwnerAvatar } from '../components/OwnerAvatar';
-import { DEFAULT_ADMIN_PASSWORD } from '../utils/auth';
+import { OrderNotificationBanner } from '../components/OrderNotificationBanner';
+import {
+  buildWhatsAppGeneralInquiryMessage,
+  buildWhatsAppUrl,
+  getBoutiqueWhatsAppNumber,
+} from '../utils/whatsapp';
 
 interface CustomerPortalShellProps {
   onExitToStaff: () => void;
@@ -25,6 +31,10 @@ interface CustomerPortalShellProps {
 export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExitToStaff }) => {
   const { state, unlockWorkspace, isOffline, toast } = useInnoWear();
   const c = state.settings.currencySymbol;
+  const whatsappUrl = buildWhatsAppUrl(
+    getBoutiqueWhatsAppNumber(state.settings),
+    buildWhatsAppGeneralInquiryMessage(state.settings)
+  );
 
   // Order tracking modal state
   const [trackOpen, setTrackOpen] = useState(false);
@@ -50,10 +60,6 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
     : [];
 
   const handleStaffReturnClick = () => {
-    if (!state.adminSecurity.protectAdminPanel && !state.adminSecurity.requireLoginOnStart) {
-      onExitToStaff();
-      return;
-    }
     setStaffPwd('');
     setStaffError('');
     setStaffLoginOpen(true);
@@ -78,8 +84,8 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
       <header className="sticky top-0 z-30 bg-[var(--bg-surface)]/95 backdrop-blur-xs border-b border-[var(--border-hairline)]">
         <div className="max-w-[1320px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="font-display text-2xl sm:text-3xl font-bold tracking-wider text-[var(--accent)] leading-none">
-              INNOWEAR
+            <span className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[var(--text-primary)] leading-none">
+              InnoWear
             </span>
             <span className="hidden md:inline-block text-xs text-[var(--text-muted)] border-l border-[var(--border-hairline)] pl-3 truncate">
               {state.settings.storeName} · Customer Ordering Portal
@@ -87,6 +93,18 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {state.settings.whatsappOrdersEnabled && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--status-positive-border)] bg-[var(--status-positive-soft)] text-[var(--status-positive)] hover:bg-emerald-600 hover:border-emerald-600 hover:text-white transition-colors whitespace-nowrap"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">WhatsApp Order</span>
+                <span className="sm:hidden">WhatsApp</span>
+              </a>
+            )}
             <button
               type="button"
               onClick={() => setTrackOpen(true)}
@@ -113,7 +131,7 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
       </header>
 
       {isOffline && (
-        <div className="px-4 sm:px-8 py-2 bg-amber-950/50 border-b border-amber-700/40 text-center text-xs text-amber-300">
+        <div className="px-4 sm:px-8 py-2 bg-[var(--status-warning-soft)] border-b border-[var(--status-warning-border)] text-center text-xs text-[var(--status-warning)] font-medium">
           Offline Mode — You can still browse items and submit orders locally.
         </div>
       )}
@@ -125,8 +143,8 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
         ) : (
           <div className="min-h-[60vh] flex items-center justify-center">
             <div className="max-w-md w-full p-8 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-center space-y-4">
-              <p className="font-display text-3xl font-bold tracking-wider text-[var(--accent)]">
-                INNOWEAR
+              <p className="font-display text-2xl font-bold tracking-tight text-[var(--text-primary)]">
+                InnoWear
               </p>
               <h1 className="text-xl font-semibold text-[var(--text-primary)]">
                 Online Ordering Currently Paused
@@ -144,6 +162,19 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
                   <MapPin className="w-3.5 h-3.5 text-[var(--accent)]" />
                   {state.settings.storeAddress}
                 </p>
+                {state.settings.whatsappOrdersEnabled && (
+                  <div className="pt-2">
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Order Directly via WhatsApp
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -165,6 +196,17 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
               <Phone className="w-3.5 h-3.5 text-[var(--accent)]" />
               {state.settings.storePhone}
             </span>
+            {state.settings.whatsappOrdersEnabled && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[var(--status-positive)] hover:underline font-medium transition-colors"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                WhatsApp: {getBoutiqueWhatsAppNumber(state.settings)}
+              </a>
+            )}
           </div>
           <button
             type="button"
@@ -228,7 +270,7 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
                       </div>
                       <span
                         className={`inline-flex items-center gap-1 font-semibold ${
-                          isDone ? 'text-emerald-400' : 'text-[var(--accent)]'
+                          isDone ? 'text-[var(--status-positive)]' : 'text-[var(--accent)]'
                         }`}
                       >
                         {isDone ? (
@@ -322,17 +364,8 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
                 {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            {staffError && <p className="text-red-400 mt-1.5">{staffError}</p>}
+            {staffError && <p className="text-[var(--status-danger)] mt-1.5">{staffError}</p>}
           </div>
-
-          {state.adminSecurity.isDefaultPassword && (
-            <p className="text-[11px] text-[var(--text-muted)]">
-              Default owner password:{' '}
-              <span className="font-mono-tabular text-[var(--accent)]">
-                {DEFAULT_ADMIN_PASSWORD}
-              </span>
-            </p>
-          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button
@@ -352,6 +385,8 @@ export const CustomerPortalShell: React.FC<CustomerPortalShellProps> = ({ onExit
           </div>
         </form>
       </Modal>
+
+      <OrderNotificationBanner />
 
       {toast && (
         <div

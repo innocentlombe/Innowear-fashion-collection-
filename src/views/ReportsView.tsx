@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useInnoWear } from '../store/useInnoWearStore';
 import { DeleteButton } from '../components/DeleteButton';
+import { OrderStatusChart, classifyOrderReportStatus } from '../components/OrderStatusChart';
 
 type ReportPeriod = 'Daily' | 'Weekly' | 'Monthly';
 
@@ -167,7 +168,7 @@ export const ReportsView: React.FC = () => {
         </div>
         <div className="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]">
           <p className="text-xs text-[var(--text-muted)]">Gross Profit Margin</p>
-          <p className="font-mono-tabular text-2xl font-semibold text-emerald-400 mt-1">
+          <p className="font-mono-tabular text-2xl font-semibold text-[var(--status-positive)] mt-1">
             {grossMarginPct}%
           </p>
         </div>
@@ -179,6 +180,9 @@ export const ReportsView: React.FC = () => {
           </p>
         </div>
       </div>
+
+      {/* Order Status Distribution & Fulfillment Efficiency Visual Chart */}
+      <OrderStatusChart orders={state.orders} currencySymbol={c} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Category Performance */}
@@ -308,38 +312,53 @@ export const ReportsView: React.FC = () => {
                 <th className="py-3 px-4 font-medium">Order #</th>
                 <th className="py-3 px-4 font-medium">Customer & Channel</th>
                 <th className="py-3 px-4 font-medium">Payment</th>
+                <th className="py-3 px-4 font-medium">Status</th>
                 <th className="py-3 px-4 font-medium text-right">Amount</th>
                 <th className="py-3 px-4 font-medium text-right">Delete</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-hairline)] text-sm">
-              {state.orders.map((ord) => (
-                <tr key={ord.id} className="hover:bg-[var(--bg-elevated)]/60 transition-colors">
-                  <td className="py-3 px-4 font-mono-tabular text-xs">
-                    <div className="font-semibold text-[var(--text-primary)]">
-                      {ord.orderNumber}
-                    </div>
-                    <div className="text-[var(--text-muted)]">{ord.date}</div>
-                  </td>
-                  <td className="py-3 px-4 text-xs">
-                    <div className="font-medium text-[var(--text-primary)]">{ord.customerName}</div>
-                    <div className="text-[var(--text-muted)]">{ord.channel}</div>
-                  </td>
-                  <td className="py-3 px-4 text-xs text-[var(--text-secondary)]">
-                    {ord.paymentMethod}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono-tabular font-semibold text-[var(--accent)]">
-                    {c}
-                    {ord.total.toFixed(2)}
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <DeleteButton
-                      onConfirm={() => deleteOrder(ord.id)}
-                      ariaLabel={`Delete report record ${ord.orderNumber}`}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {state.orders.map((ord) => {
+                const statusLabel = classifyOrderReportStatus(ord);
+                const statusClass =
+                  statusLabel === 'Delivered'
+                    ? 'text-[var(--status-positive)]'
+                    : statusLabel === 'Pending'
+                    ? 'text-[var(--status-warning)]'
+                    : statusLabel === 'Shipped'
+                    ? 'text-[#0284c7]'
+                    : 'text-[var(--accent)]';
+                return (
+                  <tr key={ord.id} className="hover:bg-[var(--bg-elevated)]/60 transition-colors">
+                    <td className="py-3 px-4 font-mono-tabular text-xs">
+                      <div className="font-semibold text-[var(--text-primary)]">
+                        {ord.orderNumber}
+                      </div>
+                      <div className="text-[var(--text-muted)]">{ord.date}</div>
+                    </td>
+                    <td className="py-3 px-4 text-xs">
+                      <div className="font-medium text-[var(--text-primary)]">{ord.customerName}</div>
+                      <div className="text-[var(--text-muted)]">{ord.channel}</div>
+                    </td>
+                    <td className="py-3 px-4 text-xs text-[var(--text-secondary)]">
+                      {ord.paymentMethod}
+                    </td>
+                    <td className={`py-3 px-4 text-xs font-semibold ${statusClass}`}>
+                      {statusLabel}
+                    </td>
+                    <td className="py-3 px-4 text-right font-mono-tabular font-semibold text-[var(--accent)]">
+                      {c}
+                      {ord.total.toFixed(2)}
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <DeleteButton
+                        onConfirm={() => deleteOrder(ord.id)}
+                        ariaLabel={`Delete report record ${ord.orderNumber}`}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

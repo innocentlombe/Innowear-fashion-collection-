@@ -72,7 +72,7 @@ export const CustomerAccessModal: React.FC<CustomerAccessModalProps> = ({
   onClose,
   onLaunchCustomerMode,
 }) => {
-  const { state, updateSettings, notify } = useInnoWear();
+  const { state, isAdminUnlocked, updateSettings, notify } = useInnoWear();
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedBizLink, setCopiedBizLink] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
@@ -166,25 +166,27 @@ export const CustomerAccessModal: React.FC<CustomerAccessModalProps> = ({
       subtitle="Share the dedicated Customer Ordering Portal — hides POS, Accounting, Inventory & Admin"
     >
       <div className="space-y-5 text-xs">
-        {/* Enable/Pause Customer Access Toggle */}
-        <label className="flex items-center justify-between gap-4 p-4 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] cursor-pointer">
-          <div>
-            <p className="font-semibold text-[var(--text-primary)]">
-              Customer Self-Service Ordering Portal
-            </p>
-            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-              {state.settings.customerOrderingEnabled
-                ? 'Customers can browse live stock, place Kwacha orders, get receipts, and track deliveries.'
-                : 'Ordering is currently paused for customers.'}
-            </p>
-          </div>
-          <input
-            type="checkbox"
-            checked={state.settings.customerOrderingEnabled}
-            onChange={(e) => updateSettings({ customerOrderingEnabled: e.target.checked })}
-            className="w-4 h-4 accent-[var(--accent)] shrink-0"
-          />
-        </label>
+        {/* Enable/Pause Customer Access Toggle (Admin Only) */}
+        {isAdminUnlocked && (
+          <label className="flex items-center justify-between gap-4 p-4 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] cursor-pointer">
+            <div>
+              <p className="font-semibold text-[var(--text-primary)]">
+                Customer Self-Service Ordering Portal
+              </p>
+              <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                {state.settings.customerOrderingEnabled
+                  ? 'Customers can browse live stock, place Kwacha orders, get receipts, and track deliveries.'
+                  : 'Ordering is currently paused for customers.'}
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={state.settings.customerOrderingEnabled}
+              onChange={(e) => updateSettings({ customerOrderingEnabled: e.target.checked })}
+              className="w-4 h-4 accent-[var(--accent)] shrink-0"
+            />
+          </label>
+        )}
 
         {/* Shareable Links + QR Preview */}
         <div className="flex flex-col sm:flex-row items-center gap-4 p-4 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)]">
@@ -213,32 +215,34 @@ export const CustomerAccessModal: React.FC<CustomerAccessModalProps> = ({
               </div>
             </div>
 
-            <div className="space-y-1.5 pt-2 border-t border-[var(--border-hairline)]">
-              <p className="font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5 text-[var(--accent)]" />
-                Full Business Application Link
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={businessAppUrl}
-                  className="flex-1 min-w-0 px-3 py-2 rounded-md bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-secondary)] font-mono-tabular text-[11px]"
-                />
-                <button
-                  type="button"
-                  onClick={handleCopyBizLink}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] whitespace-nowrap shrink-0"
-                >
-                  {copiedBizLink ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  {copiedBizLink ? 'Copied' : 'Copy'}
-                </button>
+            {isAdminUnlocked && (
+              <div className="space-y-1.5 pt-2 border-t border-[var(--border-hairline)]">
+                <p className="font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5">
+                  <Link2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  Full Business Application Link
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={businessAppUrl}
+                    className="flex-1 min-w-0 px-3 py-2 rounded-md bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-secondary)] font-mono-tabular text-[11px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopyBizLink}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] whitespace-nowrap shrink-0"
+                  >
+                    {copiedBizLink ? (
+                      <Check className="w-3.5 h-3.5 text-[var(--status-positive)]" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5" />
+                    )}
+                    {copiedBizLink ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -262,7 +266,7 @@ export const CustomerAccessModal: React.FC<CustomerAccessModalProps> = ({
               className="inline-flex items-center gap-1.5 px-3 py-2 font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] whitespace-nowrap"
             >
               {copiedWhatsApp ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <Check className="w-3.5 h-3.5 text-[var(--status-positive)]" />
               ) : (
                 <MessageCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
               )}

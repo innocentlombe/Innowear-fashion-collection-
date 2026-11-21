@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import {
   AppState,
   ThemePalette,
@@ -18,14 +25,19 @@ import {
   PurchaseOrder,
   PromoCampaign,
   AdminUser,
-  AdminSecurity,
   StoreSettings,
   LoyaltyTier,
+  BusinessDocument,
+  AdminSecurity,
+  AppNotification,
 } from '../types';
 import { INITIAL_STATE } from '../data/seedData';
-import { DEFAULT_ADMIN_PASSWORD, hashPassword } from '../utils/auth';
+import {
+  playOrderNotificationChime,
+  triggerBrowserOrderNotification,
+} from '../utils/sound';
 
-const STORAGE_KEY = 'innowear_bms_state_v1';
+const STORAGE_KEY = 'innowear_bms_state_v2';
 
 export function getProductTotalStock(product: Product): number {
   return Object.values(product.stockBySize).reduce((sum, n) => sum + n, 0);
@@ -36,6 +48,18 @@ export function computeTier(totalSpent: number): LoyaltyTier {
   if (totalSpent >= 800) return 'Gold';
   if (totalSpent >= 400) return 'Silver';
   return 'Bronze';
+}
+
+export function computePaymentCharge(
+  taxableAmount: number,
+  settings: StoreSettings,
+  applyCharge: boolean
+): number {
+  if (!applyCharge || !settings.paymentChargeEnabled || taxableAmount <= 0) return 0;
+  if (settings.paymentChargeType === 'percent') {
+    return Number(((taxableAmount * settings.paymentChargeValue) / 100).toFixed(2));
+  }
+  return Number((settings.paymentChargeValue || 0).toFixed(2));
 }
 
 function nowTimestamp(): string {
@@ -52,6 +76,39 @@ function todayDate(): string {
   return nowTimestamp().slice(0, 10);
 }
 
+function normalizeState(raw: Partial<AppState> | null | undefined): AppState {
+  if (!raw || typeof raw !== 'object') return INITIAL_STATE;
+  return {
+    ...INITIAL_STATE,
+    ...raw,
+    settings: {
+      ...INITIAL_STATE.settings,
+      ...(raw.settings || {}),
+    },
+    adminSecurity: {
+      ...INITIAL_STATE.adminSecurity,
+      ...(raw.adminSecurity || {}),
+    },
+    products: Array.isArray(raw.products) ? raw.products : INITIAL_STATE.products,
+    customers: Array.isArray(raw.customers) ? raw.customers : INITIAL_STATE.customers,
+    orders: Array.isArray(raw.orders) ? raw.orders : INITIAL_STATE.orders,
+    notifications: Array.isArray(raw.notifications) ? raw.notifications : [],
+    deliveries: Array.isArray(raw.deliveries) ? raw.deliveries : INITIAL_STATE.deliveries,
+    transactions: Array.isArray(raw.transactions) ? raw.transactions : INITIAL_STATE.transactions,
+    staff: Array.isArray(raw.staff) ? raw.staff : INITIAL_STATE.staff,
+    suppliers: Array.isArray(raw.suppliers) ? raw.suppliers : INITIAL_STATE.suppliers,
+    purchaseOrders: Array.isArray(raw.purchaseOrders)
+      ? raw.purchaseOrders
+      : INITIAL_STATE.purchaseOrders,
+    campaigns: Array.isArray(raw.campaigns) ? raw.campaigns : INITIAL_STATE.campaigns,
+    loyaltyRewards: Array.isArray(raw.loyaltyRewards)
+      ? raw.loyaltyRewards
+      : INITIAL_STATE.loyaltyRewards,
+    adminUsers: Array.isArray(raw.adminUsers) ? raw.adminUsers : INITIAL_STATE.adminUsers,
+    documents: Array.isArray(raw.documents) ? raw.documents : INITIAL_STATE.documents,
+  };
+}
+
 export interface CompleteSalePayload {
   items: OrderItem[];
   channel: OrderChannel;
@@ -65,70 +122,64 @@ export interface CompleteSalePayload {
   promoCode?: string;
   pointsRedeemed?: number;
   staffName?: string;
-  cashTendered?: number;
-  changeDue?: number;
-  receiptNotes?: string;
+  applyPaymentCharge?: boolean;
 }
 
 interface InnoWearContextValue {
   state: AppState;
+  isHydrated: boolean;
   isOffline: boolean;
+  isSyncing: boolean;
+  pendingSync: boolean;
+  serverRevision: number;
   simulatedOffline: boolean;
   setSimulatedOffline: (val: boolean) => void;
   toast: string | null;
   notify: (msg: string) => void;
-  setTheme: (theme: ThemePalette) => void;
-  completeSale: (payload: CompleteSalePayload) => Order;
-  addProduct: (product: Omit<Product, 'id'>) => void;
-  updateProductImage: (productId: string, image: string) => void;
-  deleteProduct: (productId: string) => void;
-  adjustStock: (productId: string, size: string, delta: number) => void;
-  addCustomer: (customer: Omit<Customer, 'id' | 'totalSpent' | 'ordersCount' | 'points' | 'tier' | 'joinedDate'>) => Customer;
-  deleteCustomer: (customerId: string) => void;
-  advanceOrderStatus: (orderId: string, nextStatus: OrderStatus) => void;
-  deleteOrder: (orderId: string) => void;
-  advanceDeliveryStatus: (deliveryId: string, nextStatus: DeliveryStatus) => void;
-  addDelivery: (delivery: Omit<Delivery, 'id' | 'trackingCode' | 'dispatchedAt'>) => void;
-  deleteDelivery: (deliveryId: string) => void;
-  addTransaction: (txn: Omit<Transaction, 'id'>) => void;
-  settleTransaction: (txnId: string) => void;
-  deleteTransaction: (txnId: string) => void;
-  updateStaffAttendance: (staffId: string, status: AttendanceStatus) => void;
-  addStaffMember: (member: Omit<StaffMember, 'id' | 'salesAchieved'>) => void;
-  deleteStaffMember: (staffId: string) => void;
-  addSupplier: (supplier: Omit<Supplier, 'id' | 'balanceOwed'>) => void;
-  deleteSupplier: (supplierId: string) => void;
-  createPurchaseOrder: (po: Omit<PurchaseOrder, 'id' | 'poNumber' | 'status' | 'createdDate' | 'totalCost'>) => void;
-  receivePurchaseOrder: (poId: string) => void;
-  deletePurchaseOrder: (poId: string) => void;
-  redeemLoyaltyReward: (customerId: string, rewardId: string) => boolean;
-  awardBonusPoints: (customerId: string, points: number, reason: string) => void;
-  deleteLoyaltyReward: (rewardId: string) => void;
-  addCampaign: (campaign: Omit<PromoCampaign, 'id' | 'spend' | 'reach' | 'conversions'>) => void;
-  toggleCampaignStatus: (campaignId: string) => void;
-  deleteCampaign: (campaignId: string) => void;
-  addAdminUser: (user: Omit<AdminUser, 'id' | 'lastActive'>) => void;
-  toggleAdminUserActive: (userId: string) => void;
-  deleteAdminUser: (userId: string) => void;
-  updateSettings: (partial: Partial<StoreSettings>) => void;
-  updateOwnerProfile: (partial: {
-    ownerName?: string;
-    ownerTitle?: string;
-    ownerPhoto?: string;
-  }) => void;
-  isAdminUnlocked: boolean;
-  isWorkspaceLocked: boolean;
-  unlockAdmin: (password: string) => Promise<boolean>;
-  lockAdmin: () => void;
-  unlockWorkspace: (password: string) => Promise<boolean>;
-  lockWorkspace: () => void;
+  adminUnlocked: boolean;
+  hasAdminSession: boolean;
+  verifyAdminPassword: (password: string) => Promise<{ ok: boolean; error?: string }>;
   changeAdminPassword: (
     currentPassword: string,
     newPassword: string
   ) => Promise<{ ok: boolean; error?: string }>;
-  updateAdminSecurity: (
-    partial: Partial<Pick<AdminSecurity, 'protectAdminPanel' | 'requireLoginOnStart'>>
+  lockAdminPanel: () => void;
+  updateAdminSecurity: (partial: Partial<AdminSecurity>) => void;
+  setTheme: (theme: ThemePalette) => void;
+  completeSale: (payload: CompleteSalePayload) => Order;
+  addProduct: (product: Omit<Product, 'id'>) => void;
+  updateProduct: (productId: string, partial: Partial<Product>) => void;
+  deleteProduct: (productId: string) => void;
+  adjustStock: (productId: string, size: string, delta: number) => void;
+  addCustomer: (
+    customer: Omit<
+      Customer,
+      'id' | 'totalSpent' | 'ordersCount' | 'points' | 'tier' | 'joinedDate'
+    >
+  ) => Customer;
+  advanceOrderStatus: (orderId: string, nextStatus: OrderStatus) => void;
+  advanceDeliveryStatus: (deliveryId: string, nextStatus: DeliveryStatus) => void;
+  addDelivery: (delivery: Omit<Delivery, 'id' | 'trackingCode' | 'dispatchedAt'>) => void;
+  addTransaction: (txn: Omit<Transaction, 'id'>) => void;
+  settleTransaction: (txnId: string) => void;
+  updateStaffAttendance: (staffId: string, status: AttendanceStatus) => void;
+  addStaffMember: (member: Omit<StaffMember, 'id' | 'salesAchieved'>) => void;
+  addSupplier: (supplier: Omit<Supplier, 'id' | 'balanceOwed'>) => void;
+  createPurchaseOrder: (
+    po: Omit<PurchaseOrder, 'id' | 'poNumber' | 'status' | 'createdDate' | 'totalCost'>
   ) => void;
+  receivePurchaseOrder: (poId: string) => void;
+  redeemLoyaltyReward: (customerId: string, rewardId: string) => boolean;
+  awardBonusPoints: (customerId: string, points: number, reason: string) => void;
+  addCampaign: (campaign: Omit<PromoCampaign, 'id' | 'spend' | 'reach' | 'conversions'>) => void;
+  toggleCampaignStatus: (campaignId: string) => void;
+  addAdminUser: (user: Omit<AdminUser, 'id' | 'lastActive'>) => void;
+  toggleAdminUserActive: (userId: string) => void;
+  addDocument: (doc: Omit<BusinessDocument, 'id' | 'uploadedAt'>) => void;
+  deleteDocument: (docId: string) => void;
+  markNotificationRead: (notificationId: string) => void;
+  markAllNotificationsRead: () => void;
+  updateSettings: (partial: Partial<StoreSettings>) => void;
   resetDemoData: () => void;
 }
 
@@ -139,76 +190,33 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as Partial<AppState>;
-        if (parsed && Array.isArray(parsed.products) && parsed.settings) {
-          const hydratedCurrency =
-            !parsed.settings.currencySymbol || parsed.settings.currencySymbol === '$'
-              ? 'K'
-              : parsed.settings.currencySymbol;
-          const hydratedRewards = Array.isArray(parsed.loyaltyRewards)
-            ? parsed.loyaltyRewards.map((r) => ({
-                ...r,
-                title: r.title.replace(/\$(\d)/g, 'K$1'),
-              }))
-            : INITIAL_STATE.loyaltyRewards;
-          return {
-            ...INITIAL_STATE,
-            ...parsed,
-            loyaltyRewards: hydratedRewards,
-            settings: {
-              ...INITIAL_STATE.settings,
-              ...(parsed.settings || {}),
-              currencySymbol: hydratedCurrency,
-            },
-            adminSecurity: {
-              ...INITIAL_STATE.adminSecurity,
-              ...(parsed.adminSecurity || {}),
-            },
-          } as AppState;
-        }
+        return normalizeState(JSON.parse(raw) as Partial<AppState>);
       }
     } catch {
-      // Ignore storage errors and use initial seed
+      // Ignore storage read error
     }
     return INITIAL_STATE;
   });
+
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [serverRevision, setServerRevision] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingSync, setPendingSync] = useState(false);
 
   const [browserOffline, setBrowserOffline] = useState<boolean>(
     typeof navigator !== 'undefined' ? !navigator.onLine : false
   );
   const [simulatedOffline, setSimulatedOffline] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(
-    () => !state.adminSecurity.protectAdminPanel
-  );
-  const [isWorkspaceLocked, setIsWorkspaceLocked] = useState<boolean>(
-    () => state.adminSecurity.requireLoginOnStart
-  );
+
+  // Admin session token held strictly in memory
+  const [adminToken, setAdminToken] = useState<string | null>(null);
 
   const isOffline = browserOffline || simulatedOffline;
-
-  // Initialize hashed default password once if empty
-  useEffect(() => {
-    if (state.adminSecurity.passwordHash) return;
-    let active = true;
-    hashPassword(DEFAULT_ADMIN_PASSWORD).then((digest) => {
-      if (!active) return;
-      setState((prev) =>
-        prev.adminSecurity.passwordHash
-          ? prev
-          : {
-              ...prev,
-              adminSecurity: {
-                ...prev.adminSecurity,
-                passwordHash: digest,
-              },
-            }
-      );
-    });
-    return () => {
-      active = false;
-    };
-  }, [state.adminSecurity.passwordHash]);
+  const skipNextSyncRef = useRef(true);
+  const syncTimerRef = useRef<number | null>(null);
+  const latestStateRef = useRef(state);
+  latestStateRef.current = state;
 
   const notify = useCallback((msg: string) => {
     setToast(msg);
@@ -216,7 +224,7 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
+    const t = setTimeout(() => setToast(null), 3400);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -224,13 +232,117 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     document.documentElement.setAttribute('data-theme', state.theme);
   }, [state.theme]);
 
+  // Persist locally on every state update
   useEffect(() => {
+    if (!state.settings.offlineSyncEnabled) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
       // Handle quota error silently
     }
   }, [state]);
+
+  const pushStateToServer = useCallback(
+    async (targetState: AppState, tokenOverride?: string | null) => {
+      if (isOffline) {
+        setPendingSync(true);
+        return;
+      }
+      setIsSyncing(true);
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const effectiveToken = tokenOverride ?? adminToken;
+        if (effectiveToken) {
+          headers.Authorization = `Bearer ${effectiveToken}`;
+        }
+        const res = await fetch('/api/store', {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({ state: targetState }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { revision?: number };
+          if (typeof data.revision === 'number') setServerRevision(data.revision);
+          setPendingSync(false);
+        } else {
+          setPendingSync(true);
+        }
+      } catch {
+        setPendingSync(true);
+      } finally {
+        setIsSyncing(false);
+      }
+    },
+    [isOffline, adminToken]
+  );
+
+  // Initial load from server-backed persistent JSON store
+  useEffect(() => {
+    let active = true;
+    const loadFromServer = async () => {
+      try {
+        const res = await fetch('/api/store');
+        if (!res.ok) {
+          if (active) setIsHydrated(true);
+          return;
+        }
+        const data = (await res.json()) as {
+          exists: boolean;
+          revision: number;
+          state?: Partial<AppState>;
+        };
+        if (!active) return;
+        if (data.exists && data.state) {
+          skipNextSyncRef.current = true;
+          const hydrated = normalizeState(data.state);
+          setState(hydrated);
+          setServerRevision(data.revision || 0);
+        } else {
+          // Seed server store with initial state on first run
+          void pushStateToServer(latestStateRef.current);
+        }
+      } catch {
+        // Offline or server unavailable; keep localStorage copy
+      } finally {
+        if (active) setIsHydrated(true);
+      }
+    };
+    void loadFromServer();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounced server sync after local state edits
+  useEffect(() => {
+    if (!isHydrated) return;
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
+    if (isOffline) {
+      setPendingSync(true);
+      return;
+    }
+    if (syncTimerRef.current) {
+      window.clearTimeout(syncTimerRef.current);
+    }
+    syncTimerRef.current = window.setTimeout(() => {
+      void pushStateToServer(state);
+    }, 350);
+
+    return () => {
+      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    };
+  }, [state, isHydrated, isOffline, pushStateToServer]);
+
+  // Flush pending sync when connectivity returns
+  useEffect(() => {
+    if (!isOffline && pendingSync && isHydrated) {
+      void pushStateToServer(latestStateRef.current);
+    }
+  }, [isOffline, pendingSync, isHydrated, pushStateToServer]);
 
   useEffect(() => {
     const onOnline = () => setBrowserOffline(false);
@@ -243,6 +355,85 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, []);
 
+  const hasAdminSession = Boolean(adminToken);
+  const adminUnlocked = !state.adminSecurity.protectAdminPanel || hasAdminSession;
+
+  const verifyAdminPassword = useCallback(async (password: string) => {
+    try {
+      const res = await fetch('/api/admin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = (await res.json()) as { ok?: boolean; token?: string; error?: string };
+      if (!res.ok || !data.ok || !data.token) {
+        return { ok: false, error: data.error || 'Verification failed.' };
+      }
+      setAdminToken(data.token);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Unable to reach verification server.' };
+    }
+  }, []);
+
+  const changeAdminPassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      try {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (adminToken) headers.Authorization = `Bearer ${adminToken}`;
+        const res = await fetch('/api/admin/password', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ currentPassword, newPassword }),
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          token?: string;
+          passwordUpdatedAt?: string;
+          revision?: number;
+          error?: string;
+        };
+        if (!res.ok || !data.ok) {
+          return { ok: false, error: data.error || 'Could not update passcode.' };
+        }
+        if (data.token) setAdminToken(data.token);
+        if (typeof data.revision === 'number') setServerRevision(data.revision);
+        skipNextSyncRef.current = true;
+        setState((prev) => ({
+          ...prev,
+          adminSecurity: {
+            ...prev.adminSecurity,
+            isDefaultPassword: false,
+            hasPassword: true,
+            passwordUpdatedAt: data.passwordUpdatedAt || nowTimestamp(),
+          },
+        }));
+        notify('Administrator passcode updated securely.');
+        return { ok: true };
+      } catch {
+        return { ok: false, error: 'Unable to reach server while updating passcode.' };
+      }
+    },
+    [adminToken, notify]
+  );
+
+  const lockAdminPanel = useCallback(() => {
+    setAdminToken(null);
+    notify('Admin panel locked.');
+  }, [notify]);
+
+  const updateAdminSecurity = useCallback(
+    (partial: Partial<AdminSecurity>) => {
+      setState((prev) => ({
+        ...prev,
+        adminSecurity: { ...prev.adminSecurity, ...partial },
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Admin security preferences saved.');
+    },
+    [notify]
+  );
+
   const setTheme = useCallback((theme: ThemePalette) => {
     setState((prev) => ({ ...prev, theme }));
   }, []);
@@ -251,7 +442,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (payload: CompleteSalePayload): Order => {
       const subtotal = payload.items.reduce((sum, item) => sum + item.unitPrice * item.qty, 0);
 
-      // Validate promo code
       let promoDiscount = 0;
       let appliedPromo: PromoCampaign | undefined;
       if (payload.promoCode) {
@@ -273,15 +463,25 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const needsCourier =
         payload.channel === 'Online' && payload.deliveryType !== 'Store Collection';
       const deliveryFee =
-        needsCourier && subtotal < state.settings.freeDeliveryThreshold
+        needsCourier &&
+        (state.settings.freeDeliveryThreshold <= 0 ||
+          subtotal < state.settings.freeDeliveryThreshold)
           ? state.settings.deliveryFeeStandard
           : 0;
-      const total = Number((taxable + tax + deliveryFee).toFixed(2));
+
+      const applyCharge =
+        payload.applyPaymentCharge ??
+        (state.settings.paymentChargeEnabled &&
+          (payload.paymentMethod === 'Mobile Money' || payload.paymentMethod === 'Card'));
+      const paymentCharge = computePaymentCharge(taxable, state.settings, applyCharge);
+      const paymentChargeLabel =
+        paymentCharge > 0 ? state.settings.paymentChargeLabel || 'Payment Charge' : undefined;
+
+      const total = Number((taxable + tax + deliveryFee + paymentCharge).toFixed(2));
 
       const orderNumber = `INW-2026-${1049 + state.orders.length}`;
       const orderId = `ord-${Date.now()}`;
       const timestamp = nowTimestamp();
-
       const earnedPoints = Math.round(total * state.settings.pointsPerDollar);
 
       const newOrder: Order = {
@@ -300,18 +500,34 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         promoCode: appliedPromo ? appliedPromo.promoCode : undefined,
         deliveryFee,
         tax,
+        paymentCharge: paymentCharge > 0 ? paymentCharge : undefined,
+        paymentChargeLabel,
         total,
         staffName: payload.staffName,
         deliveryAddress: payload.deliveryAddress,
-        cashTendered: payload.cashTendered,
-        changeDue: payload.changeDue,
         pointsEarned: earnedPoints,
         pointsRedeemed: payload.pointsRedeemed || 0,
-        receiptNotes: payload.receiptNotes?.trim() || undefined,
+      };
+
+      const itemCount = payload.items.reduce((sum, i) => sum + i.qty, 0);
+      const newNotification: AppNotification = {
+        id: `ntf-${Date.now()}`,
+        orderId,
+        orderNumber,
+        channel: payload.channel,
+        customerName: newOrder.customerName,
+        total,
+        itemCount,
+        paymentMethod: payload.paymentMethod,
+        message:
+          payload.channel === 'POS'
+            ? `New POS sale recorded by ${payload.staffName || 'POS Terminal'}`
+            : `New online storefront order placed by ${newOrder.customerName}`,
+        timestamp,
+        read: false,
       };
 
       setState((prev) => {
-        // 1. Deduct inventory stock
         const products = prev.products.map((p) => {
           const matching = payload.items.filter((i) => i.productId === p.id);
           if (matching.length === 0) return p;
@@ -322,9 +538,7 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return { ...p, stockBySize: nextStock };
         });
 
-        // 2. Update or create CRM customer & Loyalty points
         let customers = [...prev.customers];
-        const earnedPoints = Math.round(total * prev.settings.pointsPerDollar);
         const existingIdx = payload.customerId
           ? customers.findIndex((c) => c.id === payload.customerId)
           : payload.customerEmail
@@ -366,26 +580,30 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           newOrder.customerId = newCust.id;
         }
 
-        // 3. Record Accounting transaction
+        const chargeNote =
+          paymentCharge > 0
+            ? ` (incl. ${prev.settings.currencySymbol}${paymentCharge.toFixed(2)} ${paymentChargeLabel})`
+            : '';
         const newTxn: Transaction = {
           id: `txn-${Date.now()}`,
           date: todayDate(),
           type: payload.paymentMethod === 'Cash on Delivery' ? 'Debt Receivable' : 'Income',
           category:
             payload.channel === 'POS' ? 'POS Boutique Sales' : 'Online Store Sales',
-          description: `Order ${orderNumber} — ${newOrder.customerName}`,
+          description: `Order ${orderNumber} — ${newOrder.customerName}${chargeNote}`,
           amount: total,
           reference: orderNumber,
           status: payload.paymentMethod === 'Cash on Delivery' ? 'Pending' : 'Settled',
         };
 
-        // 4. Create Delivery record if Online order
         const deliveries = [...prev.deliveries];
         if (payload.channel === 'Online') {
           const isCollection = payload.deliveryType === 'Store Collection';
           deliveries.unshift({
             id: `del-${Date.now()}`,
-            trackingCode: `${isCollection ? 'COL' : 'TRK'}-${Math.floor(10000 + Math.random() * 89999)}`,
+            trackingCode: `${isCollection ? 'COL' : 'TRK'}-${Math.floor(
+              10000 + Math.random() * 89999
+            )}`,
             orderNumber,
             customerName: newOrder.customerName,
             phone: payload.customerPhone || '+260 97 000 0000',
@@ -401,14 +619,12 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           });
         }
 
-        // 5. Update Marketing campaign conversions if promo applied
         const campaigns = prev.campaigns.map((c) =>
           appliedPromo && c.id === appliedPromo.id
             ? { ...c, conversions: c.conversions + 1 }
             : c
         );
 
-        // 6. Credit Staff member sales if POS
         const staff = prev.staff.map((s) =>
           payload.staffName && s.name === payload.staffName
             ? { ...s, salesAchieved: Number((s.salesAchieved + total).toFixed(2)) }
@@ -420,6 +636,7 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           products,
           customers,
           orders: [newOrder, ...prev.orders],
+          notifications: [newNotification, ...prev.notifications].slice(0, 50),
           deliveries,
           transactions: [newTxn, ...prev.transactions],
           campaigns,
@@ -427,6 +644,18 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           lastSyncedAt: timestamp,
         };
       });
+
+      if (state.settings.orderNotifications) {
+        if (state.settings.notificationSoundEnabled) {
+          playOrderNotificationChime();
+        }
+        if (state.settings.browserNotificationsEnabled) {
+          triggerBrowserOrderNotification(
+            `${orderNumber} (${payload.channel})`,
+            `${newOrder.customerName} · ${state.settings.currencySymbol}${total.toFixed(2)}`
+          );
+        }
+      }
 
       notify(`Order ${orderNumber} saved and synced across Inventory, CRM, and Accounting.`);
       return newOrder;
@@ -447,14 +676,14 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
-  const updateProductImage = useCallback(
-    (productId: string, image: string) => {
+  const updateProduct = useCallback(
+    (productId: string, partial: Partial<Product>) => {
       setState((prev) => ({
         ...prev,
-        products: prev.products.map((p) => (p.id === productId ? { ...p, image } : p)),
+        products: prev.products.map((p) => (p.id === productId ? { ...p, ...partial } : p)),
         lastSyncedAt: nowTimestamp(),
       }));
-      notify('Product picture updated across Inventory, POS, and Online Store.');
+      notify('Product details updated.');
     },
     [notify]
   );
@@ -466,25 +695,22 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         products: prev.products.filter((p) => p.id !== productId),
         lastSyncedAt: nowTimestamp(),
       }));
-      notify('Product removed from Inventory and Online Store.');
+      notify('Product removed from catalog.');
     },
     [notify]
   );
 
-  const adjustStock = useCallback(
-    (productId: string, size: string, delta: number) => {
-      setState((prev) => ({
-        ...prev,
-        products: prev.products.map((p) => {
-          if (p.id !== productId) return p;
-          const nextQty = Math.max(0, (p.stockBySize[size] ?? 0) + delta);
-          return { ...p, stockBySize: { ...p.stockBySize, [size]: nextQty } };
-        }),
-        lastSyncedAt: nowTimestamp(),
-      }));
-    },
-    []
-  );
+  const adjustStock = useCallback((productId: string, size: string, delta: number) => {
+    setState((prev) => ({
+      ...prev,
+      products: prev.products.map((p) => {
+        if (p.id !== productId) return p;
+        const nextQty = Math.max(0, (p.stockBySize[size] ?? 0) + delta);
+        return { ...p, stockBySize: { ...p.stockBySize, [size]: nextQty } };
+      }),
+      lastSyncedAt: nowTimestamp(),
+    }));
+  }, []);
 
   const addCustomer = useCallback(
     (
@@ -498,7 +724,7 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         id: `cus-${Date.now()}`,
         totalSpent: 0,
         ordersCount: 0,
-        points: 50, // Welcome bonus points
+        points: 50,
         tier: 'Bronze',
         joinedDate: todayDate(),
       };
@@ -509,18 +735,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }));
       notify(`Added ${customer.name} to CRM with 50 welcome points.`);
       return created;
-    },
-    [notify]
-  );
-
-  const deleteCustomer = useCallback(
-    (customerId: string) => {
-      setState((prev) => ({
-        ...prev,
-        customers: prev.customers.filter((c) => c.id !== customerId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Customer profile deleted from CRM.');
     },
     [notify]
   );
@@ -542,7 +756,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             : o
         );
 
-        // Sync matching delivery & COD accounting entry
         const deliveries = target
           ? prev.deliveries.map((d) => {
               if (d.orderNumber !== target.orderNumber) return d;
@@ -569,18 +782,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
-  const deleteOrder = useCallback(
-    (orderId: string) => {
-      setState((prev) => ({
-        ...prev,
-        orders: prev.orders.filter((o) => o.id !== orderId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Order deleted from order records.');
-    },
-    [notify]
-  );
-
   const advanceDeliveryStatus = useCallback(
     (deliveryId: string, nextStatus: DeliveryStatus) => {
       setState((prev) => {
@@ -591,11 +792,20 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const orders = target
           ? prev.orders.map((o) => {
               if (o.orderNumber !== target.orderNumber) return o;
-              if (nextStatus === 'In Transit') return { ...o, fulfillmentStatus: 'Dispatched' as const };
+              if (nextStatus === 'In Transit')
+                return { ...o, fulfillmentStatus: 'Dispatched' as const };
               if (nextStatus === 'Delivered')
-                return { ...o, fulfillmentStatus: 'Delivered' as const, paymentStatus: 'Paid' as const };
+                return {
+                  ...o,
+                  fulfillmentStatus: 'Delivered' as const,
+                  paymentStatus: 'Paid' as const,
+                };
               if (nextStatus === 'Collected')
-                return { ...o, fulfillmentStatus: 'Collected' as const, paymentStatus: 'Paid' as const };
+                return {
+                  ...o,
+                  fulfillmentStatus: 'Collected' as const,
+                  paymentStatus: 'Paid' as const,
+                };
               return o;
             })
           : prev.orders;
@@ -622,18 +832,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: nowTimestamp(),
       }));
       notify(`Scheduled dispatch ${created.trackingCode}.`);
-    },
-    [notify]
-  );
-
-  const deleteDelivery = useCallback(
-    (deliveryId: string) => {
-      setState((prev) => ({
-        ...prev,
-        deliveries: prev.deliveries.filter((d) => d.id !== deliveryId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Delivery dispatch record deleted.');
     },
     [notify]
   );
@@ -676,18 +874,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
-  const deleteTransaction = useCallback(
-    (txnId: string) => {
-      setState((prev) => ({
-        ...prev,
-        transactions: prev.transactions.filter((t) => t.id !== txnId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Financial entry deleted from ledger.');
-    },
-    [notify]
-  );
-
   const updateStaffAttendance = useCallback(
     (staffId: string, attendance: AttendanceStatus) => {
       const timeNow = nowTimestamp().slice(11, 16);
@@ -722,18 +908,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
-  const deleteStaffMember = useCallback(
-    (staffId: string) => {
-      setState((prev) => ({
-        ...prev,
-        staff: prev.staff.filter((s) => s.id !== staffId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Staff member removed from directory.');
-    },
-    [notify]
-  );
-
   const addSupplier = useCallback(
     (supplier: Omit<Supplier, 'id' | 'balanceOwed'>) => {
       const created: Supplier = { ...supplier, id: `sup-${Date.now()}`, balanceOwed: 0 };
@@ -743,18 +917,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         lastSyncedAt: nowTimestamp(),
       }));
       notify(`Added supplier ${supplier.name}.`);
-    },
-    [notify]
-  );
-
-  const deleteSupplier = useCallback(
-    (supplierId: string) => {
-      setState((prev) => ({
-        ...prev,
-        suppliers: prev.suppliers.filter((s) => s.id !== supplierId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Supplier removed from directory.');
     },
     [notify]
   );
@@ -818,21 +980,11 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           lastSyncedAt: nowTimestamp(),
         };
       });
-      notify(`Received ${po.poNumber}: +${po.quantity} units added to Inventory & logged in Accounting.`);
+      notify(
+        `Received ${po.poNumber}: +${po.quantity} units added to Inventory & logged in Accounting.`
+      );
     },
     [state.purchaseOrders, notify]
-  );
-
-  const deletePurchaseOrder = useCallback(
-    (poId: string) => {
-      setState((prev) => ({
-        ...prev,
-        purchaseOrders: prev.purchaseOrders.filter((p) => p.id !== poId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Purchase order deleted.');
-    },
-    [notify]
   );
 
   const redeemLoyaltyReward = useCallback(
@@ -873,18 +1025,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
-  const deleteLoyaltyReward = useCallback(
-    (rewardId: string) => {
-      setState((prev) => ({
-        ...prev,
-        loyaltyRewards: prev.loyaltyRewards.filter((r) => r.id !== rewardId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Loyalty reward voucher deleted.');
-    },
-    [notify]
-  );
-
   const addCampaign = useCallback(
     (campaign: Omit<PromoCampaign, 'id' | 'spend' | 'reach' | 'conversions'>) => {
       const created: PromoCampaign = {
@@ -921,18 +1061,6 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
-  const deleteCampaign = useCallback(
-    (campaignId: string) => {
-      setState((prev) => ({
-        ...prev,
-        campaigns: prev.campaigns.filter((c) => c.id !== campaignId),
-        lastSyncedAt: nowTimestamp(),
-      }));
-      notify('Marketing campaign deleted.');
-    },
-    [notify]
-  );
-
   const addAdminUser = useCallback(
     (user: Omit<AdminUser, 'id' | 'lastActive'>) => {
       const created: AdminUser = {
@@ -960,17 +1088,50 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   }, []);
 
-  const deleteAdminUser = useCallback(
-    (userId: string) => {
+  const addDocument = useCallback(
+    (doc: Omit<BusinessDocument, 'id' | 'uploadedAt'>) => {
+      const created: BusinessDocument = {
+        ...doc,
+        id: `doc-${Date.now()}`,
+        uploadedAt: nowTimestamp(),
+      };
       setState((prev) => ({
         ...prev,
-        adminUsers: prev.adminUsers.filter((u) => u.id !== userId || u.role === 'Owner'),
+        documents: [created, ...prev.documents],
         lastSyncedAt: nowTimestamp(),
       }));
-      notify('User removed from Admin Access.');
+      notify(`Saved "${doc.title}" to Business Documents Vault.`);
     },
     [notify]
   );
+
+  const deleteDocument = useCallback(
+    (docId: string) => {
+      setState((prev) => ({
+        ...prev,
+        documents: prev.documents.filter((d) => d.id !== docId),
+        lastSyncedAt: nowTimestamp(),
+      }));
+      notify('Document removed from archive.');
+    },
+    [notify]
+  );
+
+  const markNotificationRead = useCallback((notificationId: string) => {
+    setState((prev) => ({
+      ...prev,
+      notifications: prev.notifications.map((n) =>
+        n.id === notificationId ? { ...n, read: true } : n
+      ),
+    }));
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      notifications: prev.notifications.map((n) => ({ ...n, read: true })),
+    }));
+  }, []);
 
   const updateSettings = useCallback(
     (partial: Partial<StoreSettings>) => {
@@ -984,145 +1145,9 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [notify]
   );
 
-  const updateOwnerProfile = useCallback(
-    (partial: { ownerName?: string; ownerTitle?: string; ownerPhoto?: string }) => {
-      setState((prev) => {
-        const nextOwnerName =
-          partial.ownerName !== undefined
-            ? partial.ownerName.trim() || prev.settings.ownerName
-            : prev.settings.ownerName;
-        const nextOwnerTitle =
-          partial.ownerTitle !== undefined
-            ? partial.ownerTitle.trim() || prev.settings.ownerTitle
-            : prev.settings.ownerTitle;
-        const nextOwnerPhoto =
-          partial.ownerPhoto !== undefined ? partial.ownerPhoto : prev.settings.ownerPhoto;
-
-        const adminUsers = prev.adminUsers.map((u) =>
-          u.role === 'Owner' ? { ...u, name: nextOwnerName } : u
-        );
-
-        return {
-          ...prev,
-          adminUsers,
-          settings: {
-            ...prev.settings,
-            ownerName: nextOwnerName,
-            ownerTitle: nextOwnerTitle,
-            ownerPhoto: nextOwnerPhoto,
-          },
-          lastSyncedAt: nowTimestamp(),
-        };
-      });
-      notify(
-        partial.ownerPhoto !== undefined
-          ? partial.ownerPhoto
-            ? 'Owner picture uploaded and saved.'
-            : 'Owner picture removed.'
-          : 'Owner profile updated.'
-      );
-    },
-    [notify]
-  );
-
-  const verifyPassword = useCallback(
-    async (candidate: string): Promise<boolean> => {
-      const candidateHash = await hashPassword(candidate);
-      const expectedHash =
-        state.adminSecurity.passwordHash || (await hashPassword(DEFAULT_ADMIN_PASSWORD));
-      return candidateHash === expectedHash;
-    },
-    [state.adminSecurity.passwordHash]
-  );
-
-  const unlockAdmin = useCallback(
-    async (password: string): Promise<boolean> => {
-      const ok = await verifyPassword(password);
-      if (ok) {
-        setIsAdminUnlocked(true);
-        notify('Admin Control unlocked for this session.');
-      }
-      return ok;
-    },
-    [verifyPassword, notify]
-  );
-
-  const lockAdmin = useCallback(() => {
-    setIsAdminUnlocked(false);
-    notify('Admin Control locked.');
-  }, [notify]);
-
-  const unlockWorkspace = useCallback(
-    async (password: string): Promise<boolean> => {
-      const ok = await verifyPassword(password);
-      if (ok) {
-        setIsWorkspaceLocked(false);
-        setIsAdminUnlocked(true);
-        notify('InnoWear workspace unlocked.');
-      }
-      return ok;
-    },
-    [verifyPassword, notify]
-  );
-
-  const lockWorkspace = useCallback(() => {
-    setIsAdminUnlocked(false);
-    setIsWorkspaceLocked(true);
-  }, []);
-
-  const changeAdminPassword = useCallback(
-    async (
-      currentPassword: string,
-      newPassword: string
-    ): Promise<{ ok: boolean; error?: string }> => {
-      const matches = await verifyPassword(currentPassword);
-      if (!matches) {
-        return { ok: false, error: 'Current admin password is incorrect.' };
-      }
-      if (newPassword.trim().length < 4) {
-        return { ok: false, error: 'New password must be at least 4 characters.' };
-      }
-      const nextHash = await hashPassword(newPassword);
-      const timestamp = nowTimestamp();
-      setState((prev) => ({
-        ...prev,
-        adminSecurity: {
-          ...prev.adminSecurity,
-          passwordHash: nextHash,
-          isDefaultPassword: false,
-          passwordUpdatedAt: timestamp,
-        },
-        lastSyncedAt: timestamp,
-      }));
-      notify('Admin password updated and encrypted locally.');
-      return { ok: true };
-    },
-    [verifyPassword, notify]
-  );
-
-  const updateAdminSecurity = useCallback(
-    (partial: Partial<Pick<AdminSecurity, 'protectAdminPanel' | 'requireLoginOnStart'>>) => {
-      setState((prev) => ({
-        ...prev,
-        adminSecurity: {
-          ...prev.adminSecurity,
-          ...partial,
-        },
-        lastSyncedAt: nowTimestamp(),
-      }));
-      if (partial.protectAdminPanel === false) {
-        setIsAdminUnlocked(true);
-      }
-      notify('Security preferences updated.');
-    },
-    [notify]
-  );
-
   const resetDemoData = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setState(INITIAL_STATE);
-    setIsAdminUnlocked(false);
-    setIsWorkspaceLocked(false);
     notify('Workspace restored to initial InnoWear Fashion Collection dataset.');
   }, [notify]);
 
@@ -1130,54 +1155,49 @@ export const InnoWearProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     <InnoWearContext.Provider
       value={{
         state,
+        isHydrated,
         isOffline,
+        isSyncing,
+        pendingSync,
+        serverRevision,
         simulatedOffline,
         setSimulatedOffline,
         toast,
         notify,
+        adminUnlocked,
+        hasAdminSession,
+        verifyAdminPassword,
+        changeAdminPassword,
+        lockAdminPanel,
+        updateAdminSecurity,
         setTheme,
         completeSale,
         addProduct,
-        updateProductImage,
+        updateProduct,
         deleteProduct,
         adjustStock,
         addCustomer,
-        deleteCustomer,
         advanceOrderStatus,
-        deleteOrder,
         advanceDeliveryStatus,
         addDelivery,
-        deleteDelivery,
         addTransaction,
         settleTransaction,
-        deleteTransaction,
         updateStaffAttendance,
         addStaffMember,
-        deleteStaffMember,
         addSupplier,
-        deleteSupplier,
         createPurchaseOrder,
         receivePurchaseOrder,
-        deletePurchaseOrder,
         redeemLoyaltyReward,
         awardBonusPoints,
-        deleteLoyaltyReward,
         addCampaign,
         toggleCampaignStatus,
-        deleteCampaign,
         addAdminUser,
         toggleAdminUserActive,
-        deleteAdminUser,
+        addDocument,
+        deleteDocument,
+        markNotificationRead,
+        markAllNotificationsRead,
         updateSettings,
-        updateOwnerProfile,
-        isAdminUnlocked,
-        isWorkspaceLocked,
-        unlockAdmin,
-        lockAdmin,
-        unlockWorkspace,
-        lockWorkspace,
-        changeAdminPassword,
-        updateAdminSecurity,
         resetDemoData,
       }}
     >

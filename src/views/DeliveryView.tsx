@@ -90,7 +90,7 @@ export const DeliveryView: React.FC = () => {
         </div>
         <div className="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]">
           <p className="text-xs text-[var(--text-muted)]">Completed Deliveries</p>
-          <p className="font-mono-tabular text-xl font-semibold text-emerald-400 mt-1">
+          <p className="font-mono-tabular text-xl font-semibold text-[var(--status-positive)] mt-1">
             {
               state.deliveries.filter(
                 (d) => d.status === 'Delivered' || d.status === 'Collected'
@@ -166,7 +166,7 @@ export const DeliveryView: React.FC = () => {
                     <div
                       className={`font-medium ${
                         del.status === 'Delivered' || del.status === 'Collected'
-                          ? 'text-emerald-400'
+                          ? 'text-[var(--status-positive)]'
                           : 'text-[var(--accent)]'
                       }`}
                     >

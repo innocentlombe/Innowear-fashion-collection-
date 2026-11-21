@@ -7,32 +7,28 @@ import {
   CheckCircle2,
   Truck,
   Store,
-  Receipt,
-  Trash2,
   Share2,
-  Search,
+  MessageCircle,
 } from 'lucide-react';
 import { Order, OrderItem, Product, ProductCategory } from '../types';
-import { useInnoWear, getProductTotalStock } from '../store/useInnoWearStore';
+import {
+  useInnoWear,
+  getProductTotalStock,
+  computePaymentCharge,
+} from '../store/useInnoWearStore';
 import { ProductImage } from '../components/ProductImage';
 import { Modal } from '../components/Modal';
-import { AdvancedReceiptModal } from '../components/AdvancedReceiptModal';
 import { IMAGES } from '../data/seedData';
 
 interface StorefrontViewProps {
-  customerMode?: boolean;
-  onOpenCustomerAccess?: () => void;
+  isCustomerMode?: boolean;
 }
 
-export const StorefrontView: React.FC<StorefrontViewProps> = ({
-  customerMode = false,
-  onOpenCustomerAccess,
-}) => {
+export const StorefrontView: React.FC<StorefrontViewProps> = ({ isCustomerMode = false }) => {
   const { state, completeSale, notify } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [category, setCategory] = useState<'All' | ProductCategory>('All');
-  const [searchQuery, setSearchQuery] = useState('');
   const [bag, setBag] = useState<OrderItem[]>([]);
   const [bagOpen, setBagOpen] = useState(false);
 
@@ -46,11 +42,14 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
-  const [deliveryType, setDeliveryType] = useState<'Courier Dispatch' | 'Store Collection'>('Courier Dispatch');
-  const [paymentMethod, setPaymentMethod] = useState<'Card' | 'Mobile Money' | 'Cash on Delivery'>('Card');
+  const [deliveryType, setDeliveryType] = useState<'Courier Dispatch' | 'Store Collection'>(
+    'Courier Dispatch'
+  );
+  const [paymentMethod, setPaymentMethod] = useState<
+    'Card' | 'Mobile Money' | 'Cash on Delivery'
+  >('Card');
   const [promoCode, setPromoCode] = useState('');
   const [confirmedOrder, setConfirmedOrder] = useState<Order | null>(null);
-  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
 
   const categories: Array<'All' | ProductCategory> = [
     'All',
@@ -61,18 +60,10 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     'Accessories',
   ];
 
-  const visibleProducts = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return state.products.filter((p) => {
-      const matchCat = category === 'All' || p.category === category;
-      const matchQuery =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q) ||
-        p.colours.some((col) => col.toLowerCase().includes(q));
-      return matchCat && matchQuery;
-    });
-  }, [state.products, category, searchQuery]);
+  const visibleProducts = useMemo(
+    () => state.products.filter((p) => category === 'All' || p.category === category),
+    [state.products, category]
+  );
 
   const openPdp = (prod: Product) => {
     setActiveProduct(prod);
@@ -130,13 +121,22 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
   const activePromo = state.campaigns.find(
     (cam) => cam.promoCode.toUpperCase() === promoCode.trim().toUpperCase() && cam.status === 'Active'
   );
-  const discount = activePromo ? Number(((subtotal * activePromo.discountPercent) / 100).toFixed(2)) : 0;
+  const discount = activePromo
+    ? Number(((subtotal * activePromo.discountPercent) / 100).toFixed(2))
+    : 0;
+  const taxable = Math.max(0, subtotal - discount);
   const deliveryFee =
-    deliveryType === 'Courier Dispatch' && subtotal > 0 && subtotal < state.settings.freeDeliveryThreshold
+    deliveryType === 'Courier Dispatch' &&
+    subtotal > 0 &&
+    (state.settings.freeDeliveryThreshold <= 0 || subtotal < state.settings.freeDeliveryThreshold)
       ? state.settings.deliveryFeeStandard
       : 0;
-  const tax = Number((((subtotal - discount) * state.settings.taxRate) / 100).toFixed(2));
-  const total = Number((subtotal - discount + deliveryFee + tax).toFixed(2));
+  const tax = Number(((taxable * state.settings.taxRate) / 100).toFixed(2));
+  const applyCharge =
+    state.settings.paymentChargeEnabled &&
+    (paymentMethod === 'Mobile Money' || paymentMethod === 'Card');
+  const paymentCharge = computePaymentCharge(taxable, state.settings, applyCharge);
+  const total = Number((taxable + deliveryFee + tax + paymentCharge).toFixed(2));
 
   const placeOnlineOrder = (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,6 +155,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           : deliveryAddress.trim() || 'Lusaka City Center',
       deliveryType,
       promoCode: activePromo ? activePromo.promoCode : undefined,
+      applyPaymentCharge: applyCharge,
     });
 
     setConfirmedOrder(order);
@@ -167,29 +168,67 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
     setPromoCode('');
   };
 
+  const handleCopyStoreLink = async () => {
+    const baseUrl = state.settings.businessAppUrl.trim() || window.location.origin;
+    const shareUrl = `${baseUrl.replace(/\/$/, '')}/?mode=store`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      notify(`Customer storefront link copied: ${shareUrl}`);
+    } catch {
+      notify(`Shareable link: ${shareUrl}`);
+    }
+  };
+
+  const handleWhatsAppOrder = () => {
+    if (bag.length === 0) return;
+    const digits = state.settings.whatsappOrderPhone.replace(/[^0-9]/g, '');
+    if (!digits) {
+      notify('Configure a WhatsApp order phone in Admin Settings first.');
+      return;
+    }
+    const lines = bag.map(
+      (i) => `- ${i.qty}x ${i.name} (Size ${i.size}, ${i.colour}) ${c}${(i.unitPrice * i.qty).toFixed(2)}`
+    );
+    const msg = [
+      `Hello ${state.settings.storeName}, I would like to place an order:`,
+      ...lines,
+      `Total: ${c}${total.toFixed(2)}`,
+      customerName ? `Name: ${customerName}` : '',
+      deliveryAddress && deliveryType === 'Courier Dispatch' ? `Address: ${deliveryAddress}` : deliveryType,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const url = `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
+  };
+
   return (
     <div className="space-y-8">
       {/* Storefront Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-hairline)]">
         <div>
           <span className="font-display text-2xl font-semibold tracking-wide text-[var(--text-primary)]">
-            {customerMode ? state.settings.storeName : 'INNOWEAR'}
+            {state.settings.storeName}
           </span>
           <span className="ml-3 text-xs text-[var(--text-muted)]">
-            {customerMode
-              ? 'Official Boutique Collection · Pay in Kwacha (ZMW)'
+            {isCustomerMode
+              ? 'Official Online Boutique'
               : 'Online Storefront · Live Sync with Inventory & Orders'}
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {!customerMode && onOpenCustomerAccess && (
+          {!isCustomerMode && state.settings.customerOrderingEnabled && (
             <button
               type="button"
-              onClick={onOpenCustomerAccess}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors whitespace-nowrap"
+              onClick={handleCopyStoreLink}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] whitespace-nowrap shrink-0"
             >
-              <Share2 className="w-3.5 h-3.5 text-[var(--accent)]" />
-              Give Customer Access
+              <Share2 className="w-3.5 h-3.5" />
+              Share Store Link
             </button>
           )}
           <button
@@ -219,15 +258,17 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
             Architectural Tailoring & Evening Silhouettes
           </h1>
           <p className="text-sm text-neutral-200 mt-3 max-w-lg">
-            Complimentary express courier delivery on orders over {c}
-            {state.settings.freeDeliveryThreshold}. Use code INNO10 for 10% off your seasonal order.
+            {state.settings.freeDeliveryThreshold > 0
+              ? `Complimentary express courier delivery on orders over ${c}${state.settings.freeDeliveryThreshold}. `
+              : `Express courier dispatch available (${c}${state.settings.deliveryFeeStandard}) or complimentary boutique pickup. `}
+            Use code INNO10 for 10% off your seasonal order.
           </p>
         </div>
       </section>
 
-      {/* Collection Filters & Search */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+      {/* Collection Filters */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
           {categories.map((cat) => (
             <button
               key={cat}
@@ -243,21 +284,9 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative flex-1 sm:w-56">
-            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search styles or colours..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
-            />
-          </div>
-          <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">
-            {visibleProducts.length} pieces
-          </span>
-        </div>
+        <span className="text-xs text-[var(--text-muted)]">
+          Showing {visibleProducts.length} pieces
+        </span>
       </div>
 
       {/* 3-Column Luxury Product Grid */}
@@ -416,24 +445,13 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
               <h2 className="text-base font-semibold text-[var(--text-primary)]">
                 Shopping Bag & Checkout
               </h2>
-              <div className="flex items-center gap-3">
-                {bag.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setBag([])}
-                    className="text-xs text-[var(--text-muted)] hover:text-red-400 transition-colors whitespace-nowrap"
-                  >
-                    Clear Bag
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setBagOpen(false)}
-                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setBagOpen(false)}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -473,14 +491,6 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                             className="p-1 rounded bg-[var(--bg-elevated)]"
                           >
                             <Plus className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateBagQty(idx, -item.qty)}
-                            aria-label={`Remove ${item.name} from bag`}
-                            className="p-1 text-[var(--text-muted)] hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -563,9 +573,9 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                         }
                         className="w-full px-3 py-2 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)]"
                       >
-                        <option value="Card">Debit / Credit Card (ZMW)</option>
-                        <option value="Mobile Money">Mobile Money — MTN / Airtel (ZMW)</option>
-                        <option value="Cash on Delivery">Cash on Delivery — Kwacha (COD)</option>
+                        <option value="Card">Debit / Credit Card</option>
+                        <option value="Mobile Money">Mobile Money</option>
+                        <option value="Cash on Delivery">Cash on Delivery (COD)</option>
                       </select>
                       <input
                         value={promoCode}
@@ -576,6 +586,13 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                     </div>
 
                     <div className="pt-3 border-t border-[var(--border-hairline)] space-y-1.5">
+                      <div className="flex justify-between text-[var(--text-secondary)]">
+                        <span>Subtotal</span>
+                        <span className="font-mono-tabular">
+                          {c}
+                          {subtotal.toFixed(2)}
+                        </span>
+                      </div>
                       {discount > 0 && (
                         <div className="flex justify-between text-emerald-400">
                           <span>Promo ({activePromo?.promoCode})</span>
@@ -591,6 +608,15 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                           {deliveryFee === 0 ? 'Complimentary' : `${c}${deliveryFee.toFixed(2)}`}
                         </span>
                       </div>
+                      {paymentCharge > 0 && (
+                        <div className="flex justify-between text-[var(--text-secondary)]">
+                          <span>{state.settings.paymentChargeLabel || 'Payment Charge'}</span>
+                          <span className="font-mono-tabular">
+                            {c}
+                            {paymentCharge.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-[var(--text-secondary)]">
                         <span>Tax ({state.settings.taxRate}%)</span>
                         <span className="font-mono-tabular">
@@ -612,7 +638,7 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
             </div>
 
             {bag.length > 0 && (
-              <div className="p-6 border-t border-[var(--border-hairline)]">
+              <div className="p-6 border-t border-[var(--border-hairline)] space-y-2">
                 <button
                   type="submit"
                   form="storefront-checkout"
@@ -621,6 +647,16 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                   Place Order · {c}
                   {total.toFixed(2)}
                 </button>
+                {state.settings.whatsappOrdersEnabled && state.settings.whatsappOrderPhone && (
+                  <button
+                    type="button"
+                    onClick={handleWhatsAppOrder}
+                    className="w-full py-2.5 px-4 text-xs font-semibold rounded-md border border-emerald-700/60 text-emerald-400 hover:bg-emerald-950/30 inline-flex items-center justify-center gap-2 transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    Order via WhatsApp
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -642,7 +678,8 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
             </div>
             <div className="p-4 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] space-y-2">
               <p className="text-[var(--text-primary)] font-medium">
-                {confirmedOrder.customerName} · {confirmedOrder.paymentMethod} ({confirmedOrder.paymentStatus})
+                {confirmedOrder.customerName} · {confirmedOrder.paymentMethod} (
+                {confirmedOrder.paymentStatus})
               </p>
               <p className="text-[var(--text-muted)]">
                 Destination: {confirmedOrder.deliveryAddress}
@@ -655,23 +692,11 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
                 </span>
               </div>
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  const target = confirmedOrder;
-                  setConfirmedOrder(null);
-                  setReceiptOrder(target);
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] whitespace-nowrap"
-              >
-                <Receipt className="w-3.5 h-3.5 text-[var(--accent)]" />
-                View / Print Receipt
-              </button>
+            <div className="flex justify-end">
               <button
                 type="button"
                 onClick={() => setConfirmedOrder(null)}
-                className="px-4 py-2 font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] whitespace-nowrap"
+                className="px-4 py-2 font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)]"
               >
                 Continue Shopping
               </button>
@@ -679,13 +704,6 @@ export const StorefrontView: React.FC<StorefrontViewProps> = ({
           </div>
         )}
       </Modal>
-
-      {/* Advanced Receipt Studio Modal */}
-      <AdvancedReceiptModal
-        order={receiptOrder}
-        onClose={() => setReceiptOrder(null)}
-        primaryActionLabel="Done"
-      />
     </div>
   );
 };

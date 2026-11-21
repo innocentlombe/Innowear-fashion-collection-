@@ -187,7 +187,7 @@ export const SuppliersView: React.FC = () => {
                           Receive Stock
                         </button>
                       ) : (
-                        <span className="text-emerald-400 font-medium">Received</span>
+                        <span className="text-[var(--status-positive)] font-medium">Received</span>
                       )}
                       <DeleteButton
                         onConfirm={() => deletePurchaseOrder(po.id)}

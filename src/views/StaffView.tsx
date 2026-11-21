@@ -63,7 +63,7 @@ export const StaffView: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]">
           <p className="text-xs text-[var(--text-muted)]">Present On Duty</p>
-          <p className="font-mono-tabular text-xl font-semibold text-emerald-400 mt-1">
+          <p className="font-mono-tabular text-xl font-semibold text-[var(--status-positive)] mt-1">
             {state.staff.filter((s) => s.attendance === 'Present').length} / {state.staff.length}
           </p>
         </div>
@@ -114,9 +114,9 @@ export const StaffView: React.FC = () => {
                     <span
                       className={`font-medium ${
                         member.attendance === 'Present'
-                          ? 'text-emerald-400'
+                          ? 'text-[var(--status-positive)]'
                           : member.attendance === 'On Leave'
-                          ? 'text-amber-400'
+                          ? 'text-[var(--status-warning)]'
                           : 'text-[var(--text-muted)]'
                       }`}
                     >

@@ -21,19 +21,35 @@ import { buildBusinessAppLinks } from '../utils/appLinks';
 interface OverviewViewProps {
   onNavigate: (mod: ModuleId) => void;
   onOpenCustomerAccess?: () => void;
+  onSwitchToCashier?: () => void;
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
   onNavigate,
   onOpenCustomerAccess,
+  onSwitchToCashier,
 }) => {
   const { state, isAdminUnlocked, notify } = useInnoWear();
   const [copiedBiz, setCopiedBiz] = useState(false);
   const [copiedShop, setCopiedShop] = useState(false);
   const { businessAppUrl, customerOrderAppUrl } = buildBusinessAppLinks(state.settings);
   const c = state.settings.currencySymbol;
-  const adminProtectedIds: ModuleId[] = ['inventory', 'orders', 'accounting', 'reports', 'admin'];
-  const isAdminLocked = state.adminSecurity.protectAdminPanel && !isAdminUnlocked;
+  const adminProtectedIds: ModuleId[] = [
+    'inventory',
+    'orders',
+    'accounting',
+    'reports',
+    'storefront',
+    'crm',
+    'delivery',
+    'staff',
+    'suppliers',
+    'loyalty',
+    'marketing',
+    'documents',
+    'admin',
+  ];
+  const isAdminLocked = !isAdminUnlocked;
 
   const totalRevenue = state.transactions
     .filter((t) => t.type === 'Income')
@@ -82,9 +98,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   }> = [
     {
       id: 'pos',
-      title: 'POS & Sales Terminal',
+      title: 'Cashier Dashboard (POS)',
       metric: `${state.orders.filter((o) => o.channel === 'POS').length} sales`,
-      detail: 'In-store checkout, receipts & cash drawer',
+      detail: 'Dedicated cashier register & shift receipts (POS only)',
     },
     {
       id: 'inventory',
@@ -95,8 +111,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
     {
       id: 'storefront',
       title: 'Online Shopping Store',
-      metric: `${state.orders.filter((o) => o.channel === 'Online').length} orders`,
-      detail: 'Customer catalog, bag & COD checkout',
+      metric: `${state.orders.filter((o) => o.channel === 'Online' || o.channel === 'WhatsApp').length} orders`,
+      detail: 'Customer catalog, WhatsApp & COD checkout',
     },
     {
       id: 'crm',
@@ -152,6 +168,12 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       metric: `${state.campaigns.filter((x) => x.status === 'Active').length} live`,
       detail: 'Promo codes, social reach & ROI',
     },
+    {
+      id: 'documents',
+      title: 'Document Keeper',
+      metric: `${state.documents.length} stored`,
+      detail: 'Licenses, leases, contracts & certificates (Admin only)',
+    },
   ];
 
   return (
@@ -173,11 +195,11 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         <div className="flex flex-wrap items-center gap-3 shrink-0">
           <button
             type="button"
-            onClick={() => onNavigate('pos')}
+            onClick={() => (onSwitchToCashier ? onSwitchToCashier() : onNavigate('pos'))}
             className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-md bg-[var(--accent)] text-[var(--accent-fg)] hover:bg-[var(--accent-hover)] transition-colors whitespace-nowrap shrink-0"
           >
             <ShoppingBag className="w-4 h-4" />
-            New POS Sale
+            Open Cashier Dashboard
           </button>
           <button
             type="button"
@@ -222,7 +244,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors whitespace-nowrap"
           >
             {copiedBiz ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <Check className="w-3.5 h-3.5 text-[var(--status-positive)]" />
             ) : (
               <Copy className="w-3.5 h-3.5 text-[var(--accent)]" />
             )}
@@ -244,7 +266,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:border-[var(--accent)] transition-colors whitespace-nowrap"
           >
             {copiedShop ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
+              <Check className="w-3.5 h-3.5 text-[var(--status-positive)]" />
             ) : (
               <Store className="w-3.5 h-3.5 text-[var(--accent)]" />
             )}
@@ -291,7 +313,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           </p>
           <p className="text-xs text-[var(--text-secondary)] mt-2">
             {state.products.length} active styles ·{' '}
-            <span className={lowStockProducts.length > 0 ? 'text-amber-400' : ''}>
+            <span className={lowStockProducts.length > 0 ? 'text-[var(--status-warning)] font-medium' : ''}>
               {lowStockProducts.length} need restock
             </span>
           </p>
@@ -394,7 +416,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                   className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border-hairline)] last:border-b-0"
                 >
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--status-warning)] font-medium">
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                       <span>Low Stock</span>
                     </div>

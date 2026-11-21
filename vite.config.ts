@@ -22,9 +22,9 @@ export default defineConfig(() => {
         manifest: {
           id: '/',
           name: 'InnoWear Business Management System',
-          short_name: 'InnoWear',
+          short_name: 'InnoWear BMS',
           description:
-            'InnoWear Fashion Collection — POS, Inventory, Customer Online Ordering, and Business Management.',
+            'Central business management platform for InnoWear Fashion Collection uniting POS, Inventory, Online Store, CRM, Accounting, Orders, Delivery, Staff, Reports, Suppliers, Loyalty, Marketing, and Admin.',
           theme_color: '#09090b',
           background_color: '#09090b',
           display: 'standalone',
@@ -53,6 +53,7 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,woff,woff2}'],
+          navigateFallbackDenylist: [/^\/api\//],
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

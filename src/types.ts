@@ -88,14 +88,13 @@ export interface Order {
   promoCode?: string;
   deliveryFee: number;
   tax: number;
+  paymentCharge?: number;
+  paymentChargeLabel?: string;
   total: number;
-  cashTendered?: number;
-  changeDue?: number;
-  pointsEarned?: number;
-  pointsRedeemed?: number;
-  receiptNotes?: string;
   staffName?: string;
   deliveryAddress?: string;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
 }
 
 export type DeliveryType = 'Courier Dispatch' | 'Store Collection';
@@ -214,6 +213,44 @@ export interface AdminUser {
   permissions: string[];
 }
 
+export interface AppNotification {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  channel: OrderChannel;
+  customerName: string;
+  total: number;
+  itemCount: number;
+  paymentMethod: PaymentMethod;
+  message: string;
+  timestamp: string;
+  read: boolean;
+}
+
+export interface BusinessDocument {
+  id: string;
+  title: string;
+  category: 'Business License' | 'Tax & TPIN' | 'Lease & Property' | 'Supplier Contract' | 'Other';
+  referenceNumber: string;
+  issuer: string;
+  issueDate: string;
+  expiryDate: string;
+  notes: string;
+  uploadedAt: string;
+  uploadedBy: string;
+  fileDataUrl?: string;
+  fileName?: string;
+}
+
+export interface AdminSecurity {
+  isDefaultPassword: boolean;
+  protectAdminPanel: boolean;
+  requireLoginOnStart: boolean;
+  passwordUpdatedAt: string;
+  hasPassword?: boolean;
+  envOverrideActive?: boolean;
+}
+
 export interface StoreSettings {
   storeName: string;
   tagline: string;
@@ -225,6 +262,8 @@ export interface StoreSettings {
   pointValueDollars: number;
   lowStockAlerts: boolean;
   orderNotifications: boolean;
+  notificationSoundEnabled: boolean;
+  browserNotificationsEnabled: boolean;
   offlineSyncEnabled: boolean;
   storeAddress: string;
   storePhone: string;
@@ -238,14 +277,12 @@ export interface StoreSettings {
   customerOrderingEnabled: boolean;
   businessSlug: string;
   businessAppUrl: string;
-}
-
-export interface AdminSecurity {
-  passwordHash: string;
-  isDefaultPassword: boolean;
-  protectAdminPanel: boolean;
-  requireLoginOnStart: boolean;
-  passwordUpdatedAt: string;
+  whatsappOrderPhone: string;
+  whatsappOrdersEnabled: boolean;
+  paymentChargeEnabled: boolean;
+  paymentChargeType: 'fixed' | 'percent';
+  paymentChargeValue: number;
+  paymentChargeLabel: string;
 }
 
 export interface AppState {
@@ -253,6 +290,7 @@ export interface AppState {
   products: Product[];
   customers: Customer[];
   orders: Order[];
+  notifications: AppNotification[];
   deliveries: Delivery[];
   transactions: Transaction[];
   staff: StaffMember[];
@@ -261,7 +299,8 @@ export interface AppState {
   campaigns: PromoCampaign[];
   loyaltyRewards: LoyaltyReward[];
   adminUsers: AdminUser[];
-  settings: StoreSettings;
+  documents: BusinessDocument[];
   adminSecurity: AdminSecurity;
+  settings: StoreSettings;
   lastSyncedAt: string;
 }

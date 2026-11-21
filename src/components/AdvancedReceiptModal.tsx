@@ -146,13 +146,13 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
 
   const totalQty = order.items.reduce((sum, i) => sum + i.qty, 0);
   const { customerOrderAppUrl } = buildBusinessAppLinks(state.settings);
-  const qrPayload = `${order.orderNumber}|${order.date}|${order.total.toFixed(2)}|${state.settings.taxId}`;
+  const qrPayload = `${order.orderNumber}|${order.date}|${order.total.toFixed(2)}`;
 
   const buildPlainTextReceipt = (): string => {
     const lines: string[] = [
       state.settings.storeName.toUpperCase(),
       state.settings.storeAddress,
-      `Tel: ${state.settings.storePhone} | Tax ID: ${state.settings.taxId}`,
+      `Tel: ${state.settings.storePhone}`,
       '----------------------------------------',
       `${giftMode ? 'GIFT RECEIPT' : 'OFFICIAL RECEIPT'}: ${order.orderNumber}`,
       `Date: ${order.date}`,
@@ -179,7 +179,11 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
       if (order.deliveryFee > 0) {
         lines.push(`Delivery: ${c}${order.deliveryFee.toFixed(2)}`);
       }
-      lines.push(`Tax (${state.settings.taxRate}%): ${c}${order.tax.toFixed(2)}`);
+      if (order.paymentCharge && order.paymentCharge > 0) {
+        lines.push(
+          `${order.paymentChargeLabel || 'Payment Charge'}: ${c}${order.paymentCharge.toFixed(2)}`
+        );
+      }
       lines.push(`TOTAL (ZMW): ${c}${order.total.toFixed(2)}`);
       lines.push(`Payment: ${order.paymentMethod} (${order.paymentStatus}) · Currency: Zambian Kwacha (ZMW)`);
       if (order.cashTendered && order.cashTendered > 0) {
@@ -252,7 +256,15 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
               ? `<div style="display:flex;justify-content:space-between;"><span>Delivery</span><span style="font-family:monospace;">${c}${order.deliveryFee.toFixed(2)}</span></div>`
               : ''
           }
-          <div style="display:flex;justify-content:space-between;"><span>Tax (${state.settings.taxRate}%)</span><span style="font-family:monospace;">${c}${order.tax.toFixed(2)}</span></div>
+          ${
+            order.paymentCharge && order.paymentCharge > 0
+              ? `<div style="display:flex;justify-content:space-between;"><span>${
+                  order.paymentChargeLabel || 'Payment Charge'
+                }</span><span style="font-family:monospace;">${c}${order.paymentCharge.toFixed(
+                  2
+                )}</span></div>`
+              : ''
+          }
           <div style="display:flex;justify-content:space-between;font-weight:700;font-size:16px;border-top:2px solid #111;margin-top:8px;padding-top:8px;">
             <span>Total (ZMW)</span><span style="font-family:monospace;">${c}${order.total.toFixed(2)}</span>
           </div>
@@ -269,9 +281,9 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
   <div style="max-width:${format === 'thermal' ? '360px' : '680px'};margin:0 auto;background:#fff;padding:28px;border:1px solid #d4d4d8;">
     <h1 style="margin:0;letter-spacing:2px;font-size:22px;">INNOWEAR</h1>
     <p style="margin:4px 0 0;font-size:12px;color:#555;">${state.settings.storeName} · ${state.settings.storeAddress}</p>
-    <p style="margin:2px 0 16px;font-size:12px;color:#555;">Tel: ${state.settings.storePhone} · Tax ID: ${state.settings.taxId}</p>
+    <p style="margin:2px 0 16px;font-size:12px;color:#555;">Tel: ${state.settings.storePhone}</p>
     <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:10px 0;font-size:12px;line-height:1.6;">
-      <div><strong>${giftMode ? 'Gift Receipt' : format === 'invoice' ? 'Tax Invoice' : 'Sales Receipt'}:</strong> ${order.orderNumber}</div>
+      <div><strong>${giftMode ? 'Gift Receipt' : format === 'invoice' ? 'Sales Invoice' : 'Sales Receipt'}:</strong> ${order.orderNumber}</div>
       <div><strong>Date:</strong> ${order.date} · <strong>Channel:</strong> ${order.channel}</div>
       ${order.staffName ? `<div><strong>Sales Associate:</strong> ${order.staffName}</div>` : ''}
     </div>
@@ -356,7 +368,7 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
-                A4 Tax Invoice
+                A4 Invoice
               </button>
             </div>
 
@@ -399,7 +411,7 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
                 </p>
                 <p className="text-[10px] text-neutral-600">{state.settings.storeAddress}</p>
                 <p className="text-[10px] text-neutral-600 font-mono-tabular">
-                  {state.settings.storePhone} · {state.settings.taxId}
+                  {state.settings.storePhone}
                 </p>
               </div>
 
@@ -418,7 +430,10 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
                   <span className="text-neutral-600">
                     {order.channel === 'POS' ? 'Associate' : 'Channel'}
                   </span>
-                  <span>{order.staffName || 'Online Storefront'}</span>
+                  <span>
+                    {order.staffName ||
+                      (order.channel === 'WhatsApp' ? 'WhatsApp Order' : 'Online Storefront')}
+                  </span>
                 </div>
               </div>
 
@@ -482,13 +497,17 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
                       </span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-neutral-600">VAT / Tax ({state.settings.taxRate}%)</span>
-                    <span className="font-mono-tabular">
-                      {c}
-                      {order.tax.toFixed(2)}
-                    </span>
-                  </div>
+                  {order.paymentCharge && order.paymentCharge > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-600">
+                        {order.paymentChargeLabel || 'Payment Charge'}
+                      </span>
+                      <span className="font-mono-tabular">
+                        {c}
+                        {order.paymentCharge.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-bold text-black pt-2 mt-1 border-t border-neutral-900">
                     <span>TOTAL DUE (ZMW)</span>
                     <span className="font-mono-tabular">
@@ -560,7 +579,7 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
               </div>
             </div>
           ) : (
-            /* A4 Luxury Tax Invoice Layout */
+            /* A4 Sales Invoice Layout */
             <div className="receipt-print-sheet w-full bg-[#ffffff] text-[#111113] p-8 rounded-sm shadow-xl border border-neutral-300 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b-2 border-neutral-900">
                 <div>
@@ -572,13 +591,13 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
                   </p>
                   <p className="text-xs text-neutral-600 mt-1">{state.settings.storeAddress}</p>
                   <p className="text-xs text-neutral-600 font-mono-tabular">
-                    {state.settings.storePhone} · Tax ID: {state.settings.taxId}
+                    {state.settings.storePhone}
                   </p>
                 </div>
 
                 <div className="sm:text-right space-y-1">
                   <p className="text-sm font-bold tracking-wider text-black">
-                    {giftMode ? 'GIFT EXCHANGE SLIP' : 'TAX INVOICE'}
+                    {giftMode ? 'GIFT EXCHANGE SLIP' : 'SALES INVOICE'}
                   </p>
                   <p className="font-mono-tabular text-sm font-semibold text-neutral-900">
                     {order.orderNumber}
@@ -690,13 +709,15 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
                         </span>
                       </div>
                     )}
-                    <div className="flex justify-between text-neutral-600">
-                      <span>Tax ({state.settings.taxRate}%)</span>
-                      <span className="font-mono-tabular">
-                        {c}
-                        {order.tax.toFixed(2)}
-                      </span>
-                    </div>
+                    {order.paymentCharge && order.paymentCharge > 0 && (
+                      <div className="flex justify-between text-neutral-600">
+                        <span>{order.paymentChargeLabel || 'Payment Charge'}</span>
+                        <span className="font-mono-tabular">
+                          {c}
+                          {order.paymentCharge.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-base font-bold text-black pt-2 border-t-2 border-neutral-900">
                       <span>Total (ZMW)</span>
                       <span className="font-mono-tabular">
@@ -734,7 +755,7 @@ export const AdvancedReceiptModal: React.FC<AdvancedReceiptModalProps> = ({
               onClick={handleCopyText}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors whitespace-nowrap"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? <Check className="w-3.5 h-3.5 text-[var(--status-positive)]" /> : <Copy className="w-3.5 h-3.5" />}
               {copied ? 'Copied Text' : 'Copy for WhatsApp / SMS'}
             </button>
 

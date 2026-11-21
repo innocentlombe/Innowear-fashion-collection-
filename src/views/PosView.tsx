@@ -7,12 +7,17 @@ import {
   CreditCard,
   Banknote,
   Smartphone,
+  UserCheck,
 } from 'lucide-react';
 import { Order, OrderItem, PaymentMethod, Product, ProductCategory } from '../types';
-import { useInnoWear, getProductTotalStock } from '../store/useInnoWearStore';
+import {
+  useInnoWear,
+  getProductTotalStock,
+  computePaymentCharge,
+} from '../store/useInnoWearStore';
 import { ProductImage } from '../components/ProductImage';
 import { Modal } from '../components/Modal';
-import { AdvancedReceiptModal } from '../components/AdvancedReceiptModal';
+import { ReceiptModal } from '../components/ReceiptModal';
 
 export const PosView: React.FC = () => {
   const { state, completeSale, notify } = useInnoWear();
@@ -21,12 +26,16 @@ export const PosView: React.FC = () => {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<'All' | ProductCategory>('All');
   const [cart, setCart] = useState<OrderItem[]>([]);
-  const [selectedStaff, setSelectedStaff] = useState<string>(state.staff[1]?.name || state.staff[0]?.name || 'Store Cashier');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+  const [selectedStaff, setSelectedStaff] = useState<string>(
+    state.staff[1]?.name || state.staff[0]?.name || 'Store Cashier'
+  );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Card');
+  const [includePaymentCharge, setIncludePaymentCharge] = useState<boolean>(true);
   const [promoInput, setPromoInput] = useState('');
   const [appliedPromo, setAppliedPromo] = useState<string>('');
+  const [redeemPoints, setRedeemPoints] = useState<boolean>(false);
   const [cashTendered, setCashTendered] = useState<string>('');
-  const [receiptNotes, setReceiptNotes] = useState<string>('');
 
   // Variant selector state
   const [pickingProduct, setPickingProduct] = useState<Product | null>(null);
@@ -57,6 +66,8 @@ export const PosView: React.FC = () => {
       return matchCat && matchSearch;
     });
   }, [state.products, category, search]);
+
+  const selectedCustomer = state.customers.find((cust) => cust.id === selectedCustomerId);
 
   const openVariantPicker = (product: Product) => {
     const availableSize =
@@ -129,10 +140,20 @@ export const PosView: React.FC = () => {
   const promoDiscount = activeCampaign
     ? Number(((subtotal * activeCampaign.discountPercent) / 100).toFixed(2))
     : 0;
-  const totalDiscount = Math.min(subtotal, promoDiscount);
+  const redeemablePoints =
+    redeemPoints && selectedCustomer ? Math.min(selectedCustomer.points, 500) : 0;
+  const pointsDiscount = Number(
+    (redeemablePoints * state.settings.pointValueDollars).toFixed(2)
+  );
+  const totalDiscount = Math.min(subtotal, Number((promoDiscount + pointsDiscount).toFixed(2)));
   const taxable = Math.max(0, subtotal - totalDiscount);
   const tax = Number(((taxable * state.settings.taxRate) / 100).toFixed(2));
-  const grandTotal = Number((taxable + tax).toFixed(2));
+  const shouldApplyCharge =
+    state.settings.paymentChargeEnabled &&
+    includePaymentCharge &&
+    (paymentMethod === 'Mobile Money' || paymentMethod === 'Card');
+  const paymentCharge = computePaymentCharge(taxable, state.settings, shouldApplyCharge);
+  const grandTotal = Number((taxable + tax + paymentCharge).toFixed(2));
 
   const cashNumber = parseFloat(cashTendered) || 0;
   const changeDue = paymentMethod === 'Cash' && cashNumber > grandTotal ? cashNumber - grandTotal : 0;
@@ -160,19 +181,19 @@ export const PosView: React.FC = () => {
       items: cart,
       channel: 'POS',
       paymentMethod,
-      customerName: 'Walk-in Guest',
+      customerId: selectedCustomer?.id,
+      customerName: selectedCustomer?.name || 'Walk-in Guest',
       promoCode: appliedPromo || undefined,
+      pointsRedeemed: redeemablePoints,
       staffName: selectedStaff,
-      cashTendered: paymentMethod === 'Cash' && cashNumber > 0 ? cashNumber : undefined,
-      changeDue: paymentMethod === 'Cash' && changeDue > 0 ? Number(changeDue.toFixed(2)) : undefined,
-      receiptNotes: receiptNotes.trim() || undefined,
+      applyPaymentCharge: shouldApplyCharge,
     });
     setLastReceipt(order);
     setCart([]);
     setAppliedPromo('');
     setPromoInput('');
+    setRedeemPoints(false);
     setCashTendered('');
-    setReceiptNotes('');
   };
 
   return (
@@ -281,23 +302,65 @@ export const PosView: React.FC = () => {
           )}
         </div>
 
-        {/* Sales Associate Select */}
-        <div>
-          <label className="block text-xs text-[var(--text-muted)] mb-1">
-            Sales Associate
-          </label>
-          <select
-            value={selectedStaff}
-            onChange={(e) => setSelectedStaff(e.target.value)}
-            className="w-full px-3 py-2 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-          >
-            {state.staff.map((stf) => (
-              <option key={stf.id} value={stf.name}>
-                {stf.name} — {stf.role}
-              </option>
-            ))}
-          </select>
+        {/* Customer & Cashier Select */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">
+              Customer (Loyalty & CRM)
+            </label>
+            <select
+              value={selectedCustomerId}
+              onChange={(e) => {
+                setSelectedCustomerId(e.target.value);
+                setRedeemPoints(false);
+              }}
+              className="w-full px-3 py-2 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+            >
+              <option value="">Walk-in Guest</option>
+              {state.customers.map((cust) => (
+                <option key={cust.id} value={cust.id}>
+                  {cust.name} ({cust.tier} · {cust.points} pts)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs text-[var(--text-muted)] mb-1">
+              Sales Associate
+            </label>
+            <select
+              value={selectedStaff}
+              onChange={(e) => setSelectedStaff(e.target.value)}
+              className="w-full px-3 py-2 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+            >
+              {state.staff.map((stf) => (
+                <option key={stf.id} value={stf.name}>
+                  {stf.name} — {stf.role}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* Loyalty Points Toggle */}
+        {selectedCustomer && selectedCustomer.points >= 50 && (
+          <label className="flex items-center justify-between gap-2 p-3 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] cursor-pointer">
+            <div className="flex items-center gap-2 text-xs">
+              <UserCheck className="w-4 h-4 text-[var(--accent)] shrink-0" />
+              <span className="text-[var(--text-primary)]">
+                Redeem {Math.min(selectedCustomer.points, 500)} pts ({c}
+                {(Math.min(selectedCustomer.points, 500) * state.settings.pointValueDollars).toFixed(2)} off)
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              checked={redeemPoints}
+              onChange={(e) => setRedeemPoints(e.target.checked)}
+              className="accent-[var(--accent)]"
+            />
+          </label>
+        )}
 
         {/* Basket Items */}
         <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
@@ -372,9 +435,7 @@ export const PosView: React.FC = () => {
 
         {/* Payment Method */}
         <div>
-          <span className="block text-xs text-[var(--text-muted)] mb-2">
-            Payment Method (Kwacha · ZMW)
-          </span>
+          <span className="block text-xs text-[var(--text-muted)] mb-2">Payment Method</span>
           <div className="grid grid-cols-3 gap-2">
             {(
               [
@@ -403,10 +464,29 @@ export const PosView: React.FC = () => {
           </div>
         </div>
 
+        {state.settings.paymentChargeEnabled &&
+          (paymentMethod === 'Mobile Money' || paymentMethod === 'Card') && (
+            <label className="flex items-center justify-between gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
+              <span>
+                Apply {state.settings.paymentChargeLabel || 'Payment Charge'} (
+                {state.settings.paymentChargeType === 'percent'
+                  ? `${state.settings.paymentChargeValue}%`
+                  : `${c}${state.settings.paymentChargeValue}`}
+                )
+              </span>
+              <input
+                type="checkbox"
+                checked={includePaymentCharge}
+                onChange={(e) => setIncludePaymentCharge(e.target.checked)}
+                className="accent-[var(--accent)]"
+              />
+            </label>
+          )}
+
         {paymentMethod === 'Cash' && (
           <div className="flex items-center justify-between gap-3">
             <label className="text-xs text-[var(--text-muted)] whitespace-nowrap">
-              Cash Received ({c} / ZMW)
+              Cash Received
             </label>
             <input
               type="number"
@@ -420,25 +500,30 @@ export const PosView: React.FC = () => {
           </div>
         )}
 
-        {/* Optional Receipt Note */}
-        <div>
-          <input
-            type="text"
-            value={receiptNotes}
-            onChange={(e) => setReceiptNotes(e.target.value)}
-            placeholder="Receipt note (e.g. Tailoring pickup, gift box)"
-            className="w-full px-3 py-1.5 text-xs rounded-md bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
-          />
-        </div>
-
         {/* Totals Summary */}
         <div className="space-y-1.5 pt-3 border-t border-[var(--border-hairline)] text-xs">
+          <div className="flex justify-between text-[var(--text-secondary)]">
+            <span>Subtotal</span>
+            <span className="font-mono-tabular">
+              {c}
+              {subtotal.toFixed(2)}
+            </span>
+          </div>
           {totalDiscount > 0 && (
             <div className="flex justify-between text-emerald-400">
               <span>Discount {appliedPromo ? `(${appliedPromo})` : ''}</span>
               <span className="font-mono-tabular">
                 -{c}
                 {totalDiscount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {paymentCharge > 0 && (
+            <div className="flex justify-between text-[var(--text-secondary)]">
+              <span>{state.settings.paymentChargeLabel || 'Payment Charge'}</span>
+              <span className="font-mono-tabular">
+                {c}
+                {paymentCharge.toFixed(2)}
               </span>
             </div>
           )}
@@ -558,11 +643,11 @@ export const PosView: React.FC = () => {
         )}
       </Modal>
 
-      {/* Advanced Receipt Studio Modal */}
-      <AdvancedReceiptModal
+      <ReceiptModal
         order={lastReceipt}
+        settings={state.settings}
         onClose={() => setLastReceipt(null)}
-        primaryActionLabel="New Sale"
+        closeLabel="Next Customer"
       />
     </div>
   );

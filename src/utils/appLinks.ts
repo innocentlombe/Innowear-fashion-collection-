@@ -26,6 +26,12 @@ export function buildBusinessAppLinks(settings: Pick<StoreSettings, 'storeName' 
   const slug = slugifyBusinessName(settings.businessSlug || settings.storeName);
   const baseUrl = getEffectiveBaseUrl(settings.businessAppUrl);
   const businessAppUrl = baseUrl ? `${baseUrl}/?app=${slug}` : `/?app=${slug}`;
+  const cashierAppUrl = baseUrl
+    ? `${baseUrl}/?app=${slug}&mode=cashier`
+    : `/?app=${slug}&mode=cashier`;
+  const adminAppUrl = baseUrl
+    ? `${baseUrl}/?app=${slug}&mode=admin`
+    : `/?app=${slug}&mode=admin`;
   const customerOrderAppUrl = baseUrl
     ? `${baseUrl}/?app=${slug}&mode=customer`
     : `/?app=${slug}&mode=customer`;
@@ -34,6 +40,8 @@ export function buildBusinessAppLinks(settings: Pick<StoreSettings, 'storeName' 
     slug,
     baseUrl,
     businessAppUrl,
+    cashierAppUrl,
+    adminAppUrl,
     customerOrderAppUrl,
   };
 }

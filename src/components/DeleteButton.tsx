@@ -61,7 +61,7 @@ export const DeleteButton: React.FC<DeleteButtonProps> = ({
       }}
       aria-label={ariaLabel}
       title={ariaLabel}
-      className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md border border-[var(--border-hairline)] text-[var(--text-muted)] hover:text-red-400 hover:border-red-500/50 hover:bg-red-950/30 transition-colors whitespace-nowrap shrink-0"
+      className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium rounded-md border border-[var(--border-hairline)] text-[var(--text-muted)] hover:text-[var(--status-danger)] hover:border-[var(--status-danger-border)] hover:bg-[var(--status-danger-soft)] transition-colors whitespace-nowrap shrink-0"
     >
       <Trash2 className="w-3.5 h-3.5" />
       {label && <span>{label}</span>}

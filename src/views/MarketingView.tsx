@@ -120,7 +120,7 @@ export const MarketingView: React.FC = () => {
                   <div className="inline-flex items-center gap-3">
                     <span
                       className={
-                        camp.status === 'Active' ? 'text-emerald-400 font-medium' : 'text-[var(--text-muted)]'
+                        camp.status === 'Active' ? 'text-[var(--status-positive)] font-medium' : 'text-[var(--text-muted)]'
                       }
                     >
                       {camp.status}

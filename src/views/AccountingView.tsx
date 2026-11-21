@@ -84,7 +84,7 @@ export const AccountingView: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]">
           <p className="text-xs text-[var(--text-muted)]">Total Income</p>
-          <p className="font-mono-tabular text-xl font-semibold text-emerald-400 mt-1">
+          <p className="font-mono-tabular text-xl font-semibold text-[var(--status-positive)] mt-1">
             {c}
             {incomeTotal.toFixed(2)}
           </p>
@@ -100,7 +100,7 @@ export const AccountingView: React.FC = () => {
           <p className="text-xs text-[var(--text-muted)]">Net Profit</p>
           <p
             className={`font-mono-tabular text-xl font-semibold mt-1 ${
-              netProfit >= 0 ? 'text-[var(--accent)]' : 'text-red-400'
+              netProfit >= 0 ? 'text-[var(--accent)]' : 'text-[var(--status-danger)]'
             }`}
           >
             {netProfit >= 0 ? '' : '-'}
@@ -110,7 +110,7 @@ export const AccountingView: React.FC = () => {
         </div>
         <div className="p-4 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]">
           <p className="text-xs text-[var(--text-muted)]">Pending Debts / Payables</p>
-          <p className="font-mono-tabular text-sm font-semibold text-amber-400 mt-1.5">
+          <p className="font-mono-tabular text-sm font-semibold text-[var(--status-warning)] mt-1.5">
             In {c}
             {receivablesTotal.toFixed(2)} · Out {c}
             {payablesTotal.toFixed(2)}
@@ -163,10 +163,10 @@ export const AccountingView: React.FC = () => {
                     <div
                       className={`font-medium ${
                         txn.type === 'Income'
-                          ? 'text-emerald-400'
+                          ? 'text-[var(--status-positive)]'
                           : txn.type === 'Expense'
                           ? 'text-[var(--text-primary)]'
-                          : 'text-amber-400'
+                          : 'text-[var(--status-warning)]'
                       }`}
                     >
                       {txn.type}
@@ -178,7 +178,7 @@ export const AccountingView: React.FC = () => {
                   </td>
                   <td
                     className={`py-3.5 px-4 text-right font-mono-tabular text-sm font-semibold ${
-                      isCredit ? 'text-emerald-400' : 'text-[var(--text-primary)]'
+                      isCredit ? 'text-[var(--status-positive)]' : 'text-[var(--text-primary)]'
                     }`}
                   >
                     {isCredit ? '+' : '-'}

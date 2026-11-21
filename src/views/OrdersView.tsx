@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Receipt } from 'lucide-react';
+import { ArrowRight, Eye } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { useInnoWear } from '../store/useInnoWearStore';
-import { AdvancedReceiptModal } from '../components/AdvancedReceiptModal';
-import { DeleteButton } from '../components/DeleteButton';
+import { ReceiptModal } from '../components/ReceiptModal';
 
 const NEXT_STAGE: Partial<Record<OrderStatus, OrderStatus>> = {
   Confirmed: 'Packing',
@@ -12,7 +11,7 @@ const NEXT_STAGE: Partial<Record<OrderStatus, OrderStatus>> = {
 };
 
 export const OrdersView: React.FC = () => {
-  const { state, advanceOrderStatus, deleteOrder } = useInnoWear();
+  const { state, advanceOrderStatus } = useInnoWear();
   const c = state.settings.currencySymbol;
 
   const [channelFilter, setChannelFilter] = useState<'All' | 'POS' | 'Online'>('All');
@@ -131,11 +130,10 @@ export const OrdersView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedOrder(ord)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border border-[var(--border-hairline)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] whitespace-nowrap"
-                        aria-label={`Open advanced receipt for ${ord.orderNumber}`}
+                        className="p-1.5 rounded-md border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        aria-label={`View invoice ${ord.orderNumber}`}
                       >
-                        <Receipt className="w-3.5 h-3.5 text-[var(--accent)]" />
-                        Receipt
+                        <Eye className="w-3.5 h-3.5" />
                       </button>
                       {next && (
                         <button
@@ -147,13 +145,6 @@ export const OrdersView: React.FC = () => {
                           <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
-                      <DeleteButton
-                        onConfirm={() => {
-                          if (selectedOrder?.id === ord.id) setSelectedOrder(null);
-                          deleteOrder(ord.id);
-                        }}
-                        ariaLabel={`Delete order ${ord.orderNumber}`}
-                      />
                     </div>
                   </td>
                 </tr>
@@ -163,11 +154,11 @@ export const OrdersView: React.FC = () => {
         </table>
       </div>
 
-      {/* Advanced Receipt Studio Modal */}
-      <AdvancedReceiptModal
+      <ReceiptModal
         order={selectedOrder}
+        settings={state.settings}
         onClose={() => setSelectedOrder(null)}
-        primaryActionLabel="Close"
+        closeLabel="Done"
       />
     </div>
   );
